@@ -1,0 +1,128 @@
+
+------------------------
+high P mol fracs shallow
+{'CO2': 0.100000000000000, 'CO': 0.000512574561156589, 'H2': 0.00128278807281291, 'S2': 0.0820286060415443, 'H2S': 0.414305744576821, 'H2O': 0.358365084317274, 'SO2': 0.0435052024303892, 'O2': 2.27080603483013e-15}
+sum = 1.000000
+
+low P mol fracs shallow -- after adding function to calc lowP fO2
+{'CO2': 0.0576742642444203, 'CO': 0.000356922579613535, 'H2': 0.00207363303629548, 'S2': 0.0296948253860459, 'H2S': 0.0144228804329138, 'H2O': 0.369829079456368, 'SO2': 0.525948394863071, 'O2': 1.27162717343225e-12}
+sum = 1.000000
+
+-------------------------
+low P mol fracs int
+{'CO2': 0.0300276600339446, 'CO': 0.000161580402882842, 'H2': 0.00101765667363132, 'S2': 0.177323712981776, 'H2S': 0.0371425744836054, 'H2O': 0.191602817630009, 'SO2': 0.562723997794077, 'O2': 7.39145460613201e-14}
+sum = 1.000000
+
+--------------------------
+low P mol fracs deep
+{'CO2': 0.0458893606285829, 'CO': 0.000347744792083951, 'H2': 0.00196762743270098, 'S2': 0.0123208741714198, 'H2S': 0.00555677652044887, 'H2O': 0.343198733978649, 'SO2': 0.590718882459873, 'O2': 1.62410555762578e-11}
+sum = 1.000000
+
+
+from DegassThermoModel import *
+from math import *
+
+#MELT COMPOSITIONS
+#Low-silica andesite groundmass from Larsen et al. 2010
+shallow_melt = {	"SiO2": 71.16, 
+					"TiO2": 0.97, # 06AUMC005c
+					"Al2O3": 13.72,
+					"FeO": 4.03,
+					"Fe2O3": 0.,
+					"MnO": 0.12,
+					"MgO": 0.90,
+					"CaO": 3.13,
+					"Na2O": 3.37,
+					"K2O": 2.06,
+					"P2O5": 0.23,
+					"H2O": 2.00, #TODO need better vals
+					"CO2": 0.03,
+					"S": 0.02
+					}
+
+shallow_vols = (shallow_melt["H2O"],
+				shallow_melt["CO2"],
+				shallow_melt["S"])
+
+#high-silica andesite
+#HSA matrix glass from Larsen et al. 2010
+int_melt = {	"SiO2": 75.86, #Values in wt% 
+					"TiO2": 0.44, 
+					"Al2O3": 12.81,
+					"FeO": 2.08, 
+					"Fe2O3": 0.,
+					"MnO": 0.08,
+					"MgO": 0.41,
+					"CaO": 2.09,
+					"Na2O": 3.78,
+					"K2O": 0.99,
+					"P2O5": 0.14,
+					"H2O": 4.10, #Highest reported evolved augustine MI in Webster et al 2010
+					"CO2": 0.011, #Highest reported evolved augustine MI in Webster et al 2010
+					"S": 0.02
+					}
+
+int_vols = (int_melt["H2O"],
+			int_melt["CO2"],
+			int_melt["S"])
+
+
+#primitive mafic recharge
+deep_melt = {	"SiO2": 54.92, #Values in wt% #Augustine basalt sample from Webster et al 2010 (cpx-hosted MI)
+					"TiO2": 0.62, #RB-W91A137 cpx MI
+					"Al2O3": 14.62,
+					"FeO": 6.86, 
+					"Fe2O3": 0.,
+					"MnO": 0.16,
+					"MgO": 5.89,
+					"CaO": 10.33,
+					"Na2O": 2.04,
+					"K2O": 0.61,
+					"P2O5": 0.15,
+					"H2O": 4.00, #Water by difference from reheated MI, max value
+					"CO2": 0.02, #TODO... this is a WAG
+					"S": 0.23
+					}
+
+deep_vols = (deep_melt["H2O"],
+			 deep_melt["CO2"],
+			 deep_melt["S"])
+
+#calculate equilibrium fluids
+#SHALLOW
+shallow_melt = SilicateMelt(shallow_melt)
+shallow_XCO2 = 0.10
+shallow_temp = 900.0
+shallow_press = 1000.0
+shallow_fH2O = shallow_melt.calc_fH2O(shallow_temp, shallow_press)
+shallow_obj = Model(temp=shallow_temp, press=shallow_press, fO2_buffer='QFM', fO2_delta=1.0, H2O_param=shallow_fH2O, 
+				H2O_param_type="fugacity", SC_param=shallow_XCO2, SC_param_type="CO2molfrac")
+shallow_eq_highP = shallow_obj.eq_fluid(return_as='molfrac')
+#respecieate at 1 bar
+shallow_eq = shallow_obj.respeciate(shallow_eq_highP, newP=1, input_type='molfrac')
+
+
+#INTERMEDIATE
+int_melt = SilicateMelt(int_melt)
+int_XCO2 = 0.10
+int_temp = 850.0
+int_press = 1500.0
+int_fH2O = int_melt.calc_fH2O(int_temp, int_press)
+int_obj = Model(temp=int_temp, press=int_press, fO2_buffer='QFM', fO2_delta=1.0, H2O_param=int_fH2O, 
+				H2O_param_type="fugacity", SC_param=int_XCO2, SC_param_type="CO2molfrac")
+int_eq_highP = int_obj.eq_fluid(return_as='molfrac')
+#respecieate at 1 bar
+int_eq = int_obj.respeciate(int_eq_highP, newP=1, input_type='molfrac')
+
+#DEEP
+deep_melt = SilicateMelt(deep_melt)
+deep_XCO2 = 0.10
+deep_logfO2 = -10.19 #QFM+1
+deep_temp = 970.0
+deep_press = 3000.0
+deep_fH2O = deep_melt.calc_fH2O(deep_temp, deep_press)
+deep_obj = Model(temp=deep_temp, press=deep_press, fO2_buffer='QFM', fO2_delta=1.0, H2O_param=deep_fH2O, 
+				H2O_param_type="fugacity", SC_param=deep_XCO2, SC_param_type="CO2molfrac")
+deep_eq_highP = deep_obj.eq_fluid(return_as='molfrac')
+#respecieate at 1 bar
+deep_eq = deep_obj.respeciate(deep_eq_highP, newP=1, input_type='molfrac')

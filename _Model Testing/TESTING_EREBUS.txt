@@ -1,0 +1,92 @@
+Ran the basanite through my model... comparing to results in my excel spreadsheet
+------------------------
+High P mol frac code
+{'CO2': 0.930000000000000, 'CO': 0.00384057748554215, 'H2': 6.92900108638824e-5, 'S2': 6.51951767235910e-6, 'H2S': 0.000100476519163104, 'H2O': 0.0623005869556560, 'SO2': 0.00368254950869392, 'O2': 2.40863679315746e-12}
+
+Normalized High P mol percents
+{'CO2': 93.0000000000000, 'CO': 0.384057748554215, 'H2': 0.00692900108638824, 'S2': 0.000651951767235910, 'H2S': 0.0100476519163104, 'H2O': 6.23005869556559, 'SO2': 0.368254950869392, 'O2': 2.40863679315746e-10}
+
+High P mol percents paper
+CO2: 90.26, CO: 0.37, H2: not reported, S2: not reported, H2S: 0.11, H2O: 5.29, SO2: 3.97, O2: not reported
+PROBLEMS: CO2 a bit off, H2S, H2O a bit high, SO2
+------------------------
+
+------------------------
+High P partial pressures code
+{'H2O': 276.926109017891, 'CO2': 4133.85000000000, 'CO': 17.0713669232349, 'SO2': 16.3689325661445, 'H2': 0.307994098289957, 'S2': 0.0289792560536362, 'O2': 1.07063905455849e-8, 'H2S': 0.446618127679996}
+
+High P partial pressures paper
+H2O: 276.9, CO2: 4133, CO: 17.1, SO2: 69.1, H2: 0.31, S2: 0.501, O2: 1.07e-08, H2S: 1.85
+PROBLEMS: SO2 too low!, S2 too low!, H2S too low!
+------------------------
+
+------------------------
+low P mol fractions code
+{'CO2': 0.929551921292648, 'CO': 0.00413867662377707, 'H2': 0.000117203436031527, 'S2': 3.24819224609134e-10, 'H2S': 1.46886813705225e-8, 'H2O': 0.0623291162473228, 'SO2': 0.00380256513470895, 'O2': 2.34386209189849e-8}
+
+low P mol percents paper
+CO2: 92.91, CO: 0.49, H2: not reported, S2: not reported, H2S: <0.01, H2O: 6.21, SO2: 0.39, O2: not reported
+NO PROBLEMS!
+------------------------
+
+------------------------
+High P fugacities code - After tweak to critical P
+{'H2O': 333.9, 'CO2': 10483.6758962529, 'CO': 46.6804937028443, 'SO2': 50.7605132067115, 'H2': 0.628033151801245, 'S2': 0.0578836012680837, 'O2': 2.3442288153199228e-08, 'H2S': 1.05055645351439}
+
+High P fugacities from the paper
+H2O: 333.86, CO2: 10482.5486, CO: 46.675, SO2: 51.2861, H2: 0.625, S2: 0.05888, O2: 2.344E-08, H2S: 1.04712
+Before PROBLEMS: S02, S2, H2S
+NO PROBLEMS!
+------------------------
+
+------------------------
+Ks code
+{'H2O': 3472432.7991845775, 'CO2': 1466824.4675140243, 'SO2': 9000118605.571083, 'H2S': 6.952789067368983}
+
+Ks excel
+H2O 3488549, CO2: 1466824, SO2: 9000118606, H2S: 6.952789
+NO PROBLEMS!
+------------------------
+
+------------------------
+High P gammas - After tweak to critical P
+{'CO2': 2.53605619368214, 'CO': 2.73443209982852, 'H2': 2.03910774683088, 'S2': 1.99741501855499, 'H2S': 2.35224767738741, 'H2O': 1.20573679810894, 'SO2': 3.10102769387042, 'O2': 2.18956034280539}
+
+Gammas paper
+CO2: 2.54, CO: 2.73, H2: 2.04, S2: 2.00, H2S: 2.19, H2O: 1.21, SO2: 3.05, O2: 2.1896 *from excel, not reported in paper
+NO PROBLEMS!
+------------------------
+
+from DegassThermoModel import *
+from math import *
+
+deep_melt = {	"SiO2": 41.70, #Values in wt% 
+					"TiO2": 4.21, 
+					"Al2O3": 14.80,
+					"FeO": 8.05, 
+					"Fe2O3": 5.72,
+					"MnO": 0.16,
+					"MgO": 5.95,
+					"CaO": 13.07,
+					"Na2O": 3.74,
+					"K2O": 1.65,
+					"P2O5": 0.94,
+					"H2O": 1.50, 
+					"CO2": 0.5537, 
+					"S": 0.2166
+					}
+
+deep_vols = (deep_melt["H2O"],
+			 deep_melt["CO2"],
+			 deep_melt["S"])
+
+deep_melt = SilicateMelt(deep_melt)
+deep_XCO2 = 0.93
+deep_temp = 1100.0
+deep_press = 4445.0
+deep_fH2O = 333.9
+deep_obj = Model(temp=deep_temp, press=deep_press, fO2_buffer='QFM', fO2_delta=1.5, H2O_param=deep_fH2O, 
+				H2O_param_type="fugacity", SC_param=deep_XCO2, SC_param_type="CO2molfrac")
+deep_eq_highP = deep_obj.eq_fluid(return_as='molfrac')
+#respecieate at 1 bar
+deep_eq = deep_obj.respeciate(deep_eq_highP, newP=1, input_type='molfrac')
