@@ -1,4 +1,5 @@
 TAVERN
+------
 TAVERN: Thermodynamic Analysis and Volatile Equilibrium Reconstruction eNgine
 
 A Python library written by Kayla Iacovino after Iacovino (2015) for calculating the equilibrium state of H2O and CO2 in a silicate melt and/or 
