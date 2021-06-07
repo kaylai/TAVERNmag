@@ -750,7 +750,7 @@ class MagmaticFluid(object):
 		fH2_a, fS2_a = fsolve(equations, (1, 1))
 		fH2 = abs(fH2_a)
 		fS2 = abs(fS2_a)
-		print fS2
+		print(fS2)
 
 		#SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
 		fCO = symbols('fCO') #for sympy
@@ -1041,7 +1041,7 @@ class Model(object):
 		P_err = self.recalc_pressure - press
 
 		if P_err != 0.0:
-			print "Calculated pressure error is " + str(P_err) + " bars"
+			print("Calculated pressure error is " + str(P_err) + " bars")
 
 		if return_as == 'molfrac':
 			return mol_fractions
@@ -1383,7 +1383,7 @@ class Match(object):
 								#if sum_Stot < (surface_gas["Stot"] + surface_gas["Stot"]*threshold) and sum_Stot > (surface_gas["Stot"] - surface_gas["Stot"]*threshold):
 							result_list.append(combo)
 
-		print result_list
+		print(result_list)
 
 
 
