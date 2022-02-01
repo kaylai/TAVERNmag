@@ -854,8 +854,6 @@ class MagmaticFluid(object):
 		if fugacities is 'calculate':
 			fugacities = self.fugacities(gammas=gammas, K_vals=K_vals)
 
-		print(fugacities)
-
 		X_dict = {}
 		for species in fluid_species_names:
 			X = fugacities[species] / (gammas[species] * press)
