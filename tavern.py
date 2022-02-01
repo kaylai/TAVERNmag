@@ -256,17 +256,43 @@ def calc_logfO2_from_buffer(temp, buffer, delta, press='default'):
 	float
 		Value of logfO2
 	"""
+	def calc_QFM(P, T):
+		"""
+		Quartz-Fayalite-Magnetite (QFM)
+		===============================
+		Define QFM buffer value at P
 
-	tempK = temp + 273.15
+		Parameters
+		----------
+		P: float
+			Pressure in bars
+
+		T: float
+			Temperature in degrees C
+
+		Returns
+		-------
+		float or numpy array
+			fO2
+
+		References
+		----------
+		B. R. Frost in Mineralogical Society of America "Reviews in Mineralogy" Volume 25
+		"""
+		tempK = temp + 273.15
+
+		if tempK<573:
+			fO2 = (-26445.3/tempK) + 10.344 + 0.092 * (P-1)/tempK
+		if tempK>=573:
+			fO2 = (-25096.3/tempK) + 8.735 + 0.11 * (P-1)/tempK
+
+		return fO2
 
 	if isinstance(press,str):
 		press = 1.0
 
 	if buffer == 'QFM':
-		a = -25096.3
-		b = 8.735
-		c = 0.110
-		pass
+		fO2 = calc_QFM(press, temp)
 
 	if buffer == 'NNO':
 		#TODO
@@ -276,7 +302,8 @@ def calc_logfO2_from_buffer(temp, buffer, delta, press='default'):
 		#TODO
 		pass
 
-	return a/tempK + b + c * ((press - 1.0) / tempK) + delta
+	return fO2 + delta
+
 
 
 def Degas_MI(vols_a, vols_b, F='default'): 
