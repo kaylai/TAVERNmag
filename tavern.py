@@ -77,7 +77,7 @@ def normalize(composition):
 		SiO2, TiO2, Al2O3, FeO, Fe2O3, MgO, MnO, CaO, Na2O, K2O, P2O5, Cr2O3, NiO, F, Cl, 
 		H2O, CO2, S, S2, CO, H2, H2S, SO2, O, O2
 	"""
-	return {k: 100.0 * v / sum(composition.values()) for k, v in composition.iteritems()}
+	return {k: 100.0 * v / sum(composition.values()) for k, v in composition.items()}
 
 def molfrac_to_wtpercent(molfrac):
 	"""Converts composition in mole fraction to wt percent.
@@ -99,13 +99,13 @@ def molfrac_to_wtpercent(molfrac):
 	"""
 
 	MPO_dict = {}
-	for key, value in molfrac.iteritems():
+	for key, value in molfrac.items():
 		MPO_dict[key] = value * oxideMass[key]
 
 	MPO_sum = sum(MPO_dict.values())
 
 	wtpercent_dict = {}
-	for key, value in MPO_dict.iteritems():
+	for key, value in MPO_dict.items():
 		wtpercent_dict[key] = 100.0 * value / MPO_sum
 
 	return wtpercent_dict #TODO works in terminal, need to spot check that values are correct.
@@ -129,13 +129,13 @@ def wtpercent_to_molfrac(wtpercent):
 	"""
 
 	MPO_dict = {}
-	for key, value in wtpercent.iteritems():
+	for key, value in wtpercent.items():
 		MPO_dict[key] = value / oxideMass[key]
 
 	MPO_sum = sum(MPO_dict.values())
 
 	molfrac_dict = {}
-	for key, value in MPO_dict.iteritems():
+	for key, value in MPO_dict.items():
 		molfrac_dict[key] = value / MPO_sum
 
 	return molfrac_dict #TODO need to spot check that values are correct.
@@ -159,13 +159,13 @@ def wtpercent_to_molpercent(wtpercent):
 	"""
 
 	MPO_dict = {}
-	for key, value in wtpercent.iteritems():
+	for key, value in wtpercent.items():
 		MPO_dict[key] = value / oxideMass[key]
 
 	MPO_sum = sum(MPO_dict.values())
 
 	molfrac_dict = {}
-	for key, value in MPO_dict.iteritems():
+	for key, value in MPO_dict.items():
 		molfrac_dict[key] = 100.0 * value / MPO_sum
 
 	return molfrac_dict #TODO need to spot check that values are correct.
@@ -599,7 +599,7 @@ class SilicateMelt(object):
 					 "S":0.0}
 
 		#for loop that only appends an oxide value if the user passes one
-		for key, value in comp.iteritems():
+		for key, value in comp.items():
 			if key in self.comp:
 				self.comp[key] = value
 			else:
@@ -704,11 +704,11 @@ class MagmaticFluid(object):
 		if input_type == "molpercent":
 			self.fluid_comp_wt = molfrac_to_wtpercent(self.fluid_comp)
 			self.fluid_comp_molpercent = self.fluid_comp
-			self.fluid_comp_molfrac = {k: v / 100.0 for k, v in self.fluid_comp.iteritems()}
+			self.fluid_comp_molfrac = {k: v / 100.0 for k, v in self.fluid_comp.items()}
 
 		if input_type == "molfrac":
 			self.flud_comp_wt = molfrac_to_wtpercent(self.fluid_comp)
-			self.flud_comp_molpercent = {k: v * 100.0 for k, v in self.fluid_comp.iteritems()}
+			self.flud_comp_molpercent = {k: v * 100.0 for k, v in self.fluid_comp.items()}
 			self.fliud_comp_molfrac = self.fluid_comp
 
 	def fugacities(self, gammas='calculate', K_vals='calculate'):
@@ -735,11 +735,11 @@ class MagmaticFluid(object):
 
 		"""
 
-		if isinstance(gammas,str):
+		if gammas is 'calculate':
 			gammas = calc_gammas(self.temp, self.press, species="all")
 			self.gammas = gammas
 
-		if isinstance(K_vals,str):
+		if K_vals is 'calculate':
 			K_vals = calc_Ks(self.temp, species="all")
 
 		XH2Otot = self.fluid_comp_molfrac["H2O"]
@@ -749,7 +749,6 @@ class MagmaticFluid(object):
 		XHtot = XH2Otot * (0.6666)
 		XStot = XStot
 		XCtot = XCO2tot * (0.3333)
-		XOtot = XH2Otot * (0.3333) + XCO2tot * (0.6666)
 
 		B = gammas['H2']
 		P = self.press
@@ -775,15 +774,25 @@ class MagmaticFluid(object):
 					)
 
 		fH2_a, fS2_a = fsolve(equations, (1, 1))
-		fH2 = abs(fH2_a)
-		fS2 = abs(fS2_a)
-		print(fS2)
+
+		if XHtot == 0:
+			fH2 = 0
+		else:
+			fH2 = abs(fH2_a)
+
+		if XStot  == 0:
+			fS2 = 0
+		else:
+			fS2 = abs(fS2_a)
 
 		#SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
-		fCO = symbols('fCO') #for sympy
+		if XCtot  == 0:
+			fCO = 0
+		else:
+			fCO = symbols('fCO') #for sympy
 
-		equation = (((M * fCO * sD)/(Rational(3.0) * N * P)) + ((fCO)/(Rational(2.0) * Q * P))	- XCtot)
-		fCO = solve(equation, fCO)[0] #newly implemented sympy way
+			equation = (((M * fCO * sD)/(Rational(3.0) * N * P)) + ((fCO)/(Rational(2.0) * Q * P))	- XCtot)
+			fCO = solve(equation, fCO)[0] #newly implemented sympy way
 
 		#THIRD calculate fCO2 using calc'd fCO and known fO2 value
 		fCO2 = M * fCO * sD
@@ -836,14 +845,16 @@ class MagmaticFluid(object):
 
 		press = self.press 
 
-		if isinstance(gammas,str):
+		if gammas is 'calculate':
 			gammas = calc_gammas(self.temp, self.press, species="all")
 
-		if isinstance(K_vals,str):
+		if K_vals is 'calculate':
 			K_vals = calc_Ks(self.temp, species="all")
 
-		if isinstance(fugacities,str):
-			fugacities = self.fugacities()
+		if fugacities is 'calculate':
+			fugacities = self.fugacities(gammas=gammas, K_vals=K_vals)
+
+		print(fugacities)
 
 		X_dict = {}
 		for species in fluid_species_names:
@@ -856,12 +867,12 @@ class MagmaticFluid(object):
 
 		if return_as == 'molpercent':
 			molpercent_dict = {}
-			for key, value in X_dict.iteritems():
+			for key, value in X_dict.items():
 				molpercent_dict[key] = value*100.0
 			return molpercent_dict
 
 		if return_as == 'molfrac':
-			return {key: value/sum(X_dict.values()) for key,value in X_dict.iteritems()}
+			return {key: value/sum(X_dict.values()) for key,value in X_dict.items()}
 
 		#TODO raise exception if something other than 'wtpercent', 'molpercent' or 'molfrac' is passed?
 
@@ -1061,7 +1072,7 @@ class Model(object):
 
 
 		mol_fractions = {}
-		for key, value in partial_pressures.iteritems():
+		for key, value in partial_pressures.items():
 			mol_fractions[key] = fugacities[key] / (gammas[key] * self.recalc_pressure)
 
 		#For debugging:
@@ -1078,7 +1089,7 @@ class Model(object):
 
 		if return_as == 'molpercent':
 			molpercent_dict = {}
-			for key, value in mol_fractions.iteritems():
+			for key, value in mol_fractions.items():
 				molpercent_dict[key] = value*100.0
 			return molpercent_dict
 
@@ -1127,7 +1138,7 @@ class Model(object):
 			fluid_comp = wtpercent_to_molfrac(fluid_comp)
 
 		if input_type == "molpercent":
-			fluid_comp = {k: v / 100.0 for k, v in fluid_comp.iteritems()}
+			fluid_comp = {k: v / 100.0 for k, v in fluid_comp.items()}
 
 		if input_type == "molfrac":
 			pass
@@ -1232,7 +1243,7 @@ class Model(object):
 			X = new_fugacities[species] / (gammas[species] * newP)
 			X_dict[species] = X
 
-		return {key: value/sum(X_dict.values()) for key,value in X_dict.iteritems()}
+		return {key: value/sum(X_dict.values()) for key,value in X_dict.items()}
 
 #TODO test this entire class and init
 #TODO rewrite this to use lists, not dicts, since dicts can be passed in whatever order!
@@ -1267,7 +1278,7 @@ class Match(object):
 		# 					 "Stot":0.0}
 
 		# #for loop that only appends a gas species value if the user passes one
-		# for species, value in surface_gas.iteritems():
+		# for species, value in surface_gas.items():
 		# 	if species in self.surface_gas:
 		# 			self.surface_gas[species] = value
 		# 	else:
@@ -1285,7 +1296,7 @@ class Match(object):
 
 		#for loop that only appends a gas species value to each sub_gas if the user passes one and only if that
 		#gas is also in the surface_gas dictionary.
-		for gas_name, gas_dict in sub_gases.iteritems():
+		for gas_name, gas_dict in sub_gases.items():
 			gas_dict["SO2"] = gas_dict["SO2"] + gas_dict["H2S"]
 			for key in gas_dict.keys():
 				if key not in species_list:
@@ -1296,13 +1307,13 @@ class Match(object):
 
 
 		#normalize sub_gases
-		self.sub_gases = {gas_name: {species: (100.0 * value/sum(gas_dict.values())) for species, value in gas_dict.iteritems()} for gas_name, gas_dict in sub_gases.iteritems()}
+		self.sub_gases = {gas_name: {species: (100.0 * value/sum(gas_dict.values())) for species, value in gas_dict.items()} for gas_name, gas_dict in sub_gases.items()}
 
 		#TODO test input types
 		if input_type == "wtpercent":
 			self.sub_gases_wt = self.sub_gases
-			self.sub_gases_molpercent = {gas_name: wtpercent_to_molfrac(gas_dict) for gas_name, gas_dict in self.sub_gases_wt.iteritems()}
-			self.sub_gases_molfrac = {gas_name: {species: value / 100.0 for species, value in gas_dict.iteritems()} for gas_name, gas_dict in self.sub_gases_molpercent.iteritems()}
+			self.sub_gases_molpercent = {gas_name: wtpercent_to_molfrac(gas_dict) for gas_name, gas_dict in self.sub_gases_wt.items()}
+			self.sub_gases_molfrac = {gas_name: {species: value / 100.0 for species, value in gas_dict.items()} for gas_name, gas_dict in self.sub_gases_molpercent.items()}
 
 			self.surface_gas_wt = self.surface_gas 
 			self.surface_gas_molpercent = wtpercent_to_molpercent(self.surface_gas)
@@ -1310,20 +1321,20 @@ class Match(object):
 
 		if input_type == "molpercent":
 			self.sub_gases_molpercent = self.sub_gases
-			self.sub_gases_molfrac = {gas_name: {species: value / 100.0 for species, value in gas_dict.iteritems()} for gas_name, gas_dict in self.sub_gases_molpercent.iteritems()}
-			self.sub_gases_wt = {gas_name: molfrac_to_wtpercent(gas_dict) for gas_name, gas_dict in self.sub_gases_molfrac.iteritems()}
+			self.sub_gases_molfrac = {gas_name: {species: value / 100.0 for species, value in gas_dict.items()} for gas_name, gas_dict in self.sub_gases_molpercent.items()}
+			self.sub_gases_wt = {gas_name: molfrac_to_wtpercent(gas_dict) for gas_name, gas_dict in self.sub_gases_molfrac.items()}
 
 			self.surface_gas_molpercent = self.surface_gas
-			self.surface_gas_molfrac = {k: v / 100.0 for k, v in self.surface_gas.iteritems()}
+			self.surface_gas_molfrac = {k: v / 100.0 for k, v in self.surface_gas.items()}
 			self.surface_gas_wt = molfrac_to_wtpercent(self.surface_gas_molfrac)
 
 		if input_type == "molfrac":
 			self.sub_gases_molfrac = self.sub_gases
-			self.sub_gases_molpercent = {gas_name: {species: value * 100.0 for species, value in gas_dict.iteritems()} for gas_name, gas_dict in self.sub_gases_molfrac.iteritems()}
-			self.sub_gases_wt = {gas_name: molfrac_to_wtpercent(gas_dict) for gas_name, gas_dict in self.sub_gases_molfrac.iteritems()}
+			self.sub_gases_molpercent = {gas_name: {species: value * 100.0 for species, value in gas_dict.items()} for gas_name, gas_dict in self.sub_gases_molfrac.items()}
+			self.sub_gases_wt = {gas_name: molfrac_to_wtpercent(gas_dict) for gas_name, gas_dict in self.sub_gases_molfrac.items()}
 
 			self.surface_gas_molfrac = self.surface_gas
-			self.surface_gas_molpercent = {k: v * 100.0 for k, v in self.surface_gas.iteritems()}
+			self.surface_gas_molpercent = {k: v * 100.0 for k, v in self.surface_gas.items()}
 			self.surface_gas_wt = molfrac_to_wtpercent(self.surface_gas)
 
 	def matchmodel(self, threshold=0.10):
@@ -1348,13 +1359,13 @@ class Match(object):
 		surface_gas = self.surface_gas_molpercent
 		self.threshold = threshold
 
-		sub_CO2 = [gas_dict["CO2"] for gas_name, gas_dict in sub_gases.iteritems()]
-		sub_H2O = [gas_dict["H2O"] for gas_name, gas_dict in sub_gases.iteritems()]
+		sub_CO2 = [gas_dict["CO2"] for gas_name, gas_dict in sub_gases.items()]
+		sub_H2O = [gas_dict["H2O"] for gas_name, gas_dict in sub_gases.items()]
 		#TODO make SO2 actual SO2, not Stot
-		sub_SO2 = [gas_dict["SO2"] for gas_name, gas_dict in sub_gases.iteritems()]
-		#sub_H2S = [gas_dict["H2S"] for gas_name, gas_dict in sub_gases.iteritems()]
+		sub_SO2 = [gas_dict["SO2"] for gas_name, gas_dict in sub_gases.items()]
+		#sub_H2S = [gas_dict["H2S"] for gas_name, gas_dict in sub_gases.items()]
 		#TODO write this to be able to take in whatever keys are passed
-		#sub_Stot = [gas_dict["Stot"] for gas_name, gas_dict in sub_gases.iteritems()]
+		#sub_Stot = [gas_dict["Stot"] for gas_name, gas_dict in sub_gases.items()]
 
 		def sums(length, total_sum):
 			"""Returns a list of all possible arrays of integers, where the sum of all array elements is 'total_sum", 
