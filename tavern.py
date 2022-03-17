@@ -707,9 +707,9 @@ class MagmaticFluid(object):
 			self.fluid_comp_molfrac = {k: v / 100.0 for k, v in self.fluid_comp.items()}
 
 		if input_type == "molfrac":
-			self.flud_comp_wt = molfrac_to_wtpercent(self.fluid_comp)
-			self.flud_comp_molpercent = {k: v * 100.0 for k, v in self.fluid_comp.items()}
-			self.fliud_comp_molfrac = self.fluid_comp
+			self.fluid_comp_wt = molfrac_to_wtpercent(self.fluid_comp)
+			self.fluid_comp_molpercent = {k: v * 100.0 for k, v in self.fluid_comp.items()}
+			self.fluid_comp_molfrac = self.fluid_comp
 
 	def fugacities(self, gammas='calculate', K_vals='calculate'):
 		"""Returns fugacity values for each species.
