@@ -110,6 +110,48 @@ def molfrac_to_wtpercent(molfrac):
 
 	return wtpercent_dict #TODO works in terminal, need to spot check that values are correct.
 
+def normalize_fluid_FixedOxygen(composition, units='wtpercent'):
+	"""
+	Normalizes a fluid composition to 100%, including O2. The O2 wt%
+	will remain fixed, whilst the other species are reduced proprotionally
+	so that the total is 100 wt%
+
+	Parameters
+	----------
+	composition: dict
+		fluid composition
+
+	units:	str
+		The units of composition. Should be one of:
+		- wtpercent (default)
+		- molpercent
+		- molfrac
+
+	Returns
+	-------
+	dict
+		Normalized fluid composition.
+	"""
+	normalized = {}
+	O2_sum = composition['O2']
+
+	for spec in composition.keys():
+		if spec != 'O2':
+			normalized[spec] = composition[spec]
+	normsum = sum(normalized.values())
+
+	if units == 'wtpercent' or units == 'molpercent':
+		normalized = {k: v/normsum*(100.-O2_sum) for k, v in normalized.items()}
+	elif units == 'molfrac':
+		normalized = {k: v/normsum*(1.-O2_sum) for k, v in normalized.items()}
+	else:
+		raise Exception("Units must be one of 'wtpercent', "
+						"'molpercent', or 'molfrac'.")
+
+	normalized['O2'] = composition['O2']
+
+	return normalized
+
 def wtpercent_to_molfrac(wtpercent):
 	"""Converts composition in wt percent to mole fraction.
 
@@ -405,7 +447,7 @@ def calc_Ks(temp, species='all', return_as='standard'):
 					+	-4.805344*10.0**(-2.0) * tempK
 					+	 1.389857*10.0**(1.0))
 
-		# S2 + 1/2O2 = SO2
+		# 1/2S2 + O2 = SO2
 		"""From Robie and Hemingway (1995). Text table was fit with sixth-order polynomial to
 		arrive at the following coefficients."""
 		SO2_logK =		 (4.01465*10.0**(-17.0) * tempK**6.0
@@ -742,6 +784,9 @@ class MagmaticFluid(object):
 		if K_vals is 'calculate':
 			K_vals = calc_Ks(self.temp, species="all")
 
+		fO2 = self.fO2
+		press = self.press
+
 		XH2Otot = self.fluid_comp_molfrac["H2O"]
 		XCO2tot = self.fluid_comp_molfrac["CO2"]
 		XStot = self.fluid_comp_molfrac["S"]
@@ -750,30 +795,29 @@ class MagmaticFluid(object):
 		XStot = XStot
 		XCtot = XCO2tot * (0.3333)
 
-		B = gammas['H2']
-		P = self.press
-		C = K_vals['H2O']
-		D = self.fO2
-		sD = sqrt(D)
-		E = gammas['H2O']
-		F = K_vals['H2S']
-		G = gammas['H2S']
-		J = gammas['S2']
-		K = K_vals['SO2']
-		L = gammas['SO2']
-		M = K_vals['CO2']
-		N = gammas['CO2']
-		Q = gammas['CO']
-
 		#FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
+		if XStot == 0:
+			fS2 = 0
+		if XHtot == 0:
+			fH2 = 0
 		def equations(p):
 			fH2, fS2 = p
-			return 	(
-						( (fH2/(B*P)) 	+ ((Rational(2.0) * C * fH2 * sD)/(Rational(3.0) * E * P))		+ ((Rational(2.0) * F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P)) 	- XHtot), 
-						( (fS2/(J * P)) 	+ ((F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P))	+ ((K * D * sqrt(abs(fS2)))/(Rational(3.0) * L * P))		- XStot)
-					)
+			return 	[
+						((fH2/(gammas['H2'] * press)) +
+							((Rational(2.0) * K_vals['H2O'] * fH2 * sqrt(fO2))/(Rational(3.0) * gammas['H2O'] * press))	+
+							((Rational(2.0) * K_vals['H2S'] * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * gammas['H2S'] * press)) -
+							XHtot), 
+						((fS2/(gammas['S2'] * press)) +
+							((K_vals['H2S'] * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * gammas['H2S'] * press)) + 
+							((K_vals['SO2'] * fO2 * sqrt(abs(fS2)))/(Rational(3.0) * gammas['SO2'] * press)) -
+							XStot)
+					]
 
-		fH2_a, fS2_a = fsolve(equations, (1, 1))
+		#fH2_a, fS2_a = fsolve(equations, (1, 0))
+		# leastsq outperforms fsolve, particularly at low fO2 conditions
+		# where H2 and S2 (co-solved for above) are abundant
+		from scipy.optimize import leastsq 
+		fH2_a, fS2_a = leastsq(equations, (0,0))[0]
 
 		if XHtot == 0:
 			fH2 = 0
@@ -791,24 +835,88 @@ class MagmaticFluid(object):
 		else:
 			fCO = symbols('fCO') #for sympy
 
-			equation = (((M * fCO * sD)/(Rational(3.0) * N * P)) + ((fCO)/(Rational(2.0) * Q * P))	- XCtot)
+			equation = (((K_vals['CO2'] * fCO * sqrt(fO2))/(Rational(3.0) * gammas['CO2'] * press)) +
+				((fCO)/(Rational(2.0) * gammas['CO'] * press))	-
+				XCtot)
 			fCO = solve(equation, fCO)[0] #newly implemented sympy way
 
 		#THIRD calculate fCO2 using calc'd fCO and known fO2 value
-		fCO2 = M * fCO * sD
+		fCO2 = K_vals['CO2'] * fCO * sqrt(fO2)
 
 		#FOURTH calcualte fSO2 using calc'd fS2 and known fO2 value
-		fSO2 = K * sqrt(fS2) * D
+		fSO2 = K_vals['SO2'] * sqrt(fS2) * fO2
 
 		#FIFTH calculate fH2S using calc'd fH2 and fS2 values
-		fH2S = F * fH2 * sqrt(fS2)
+		fH2S = K_vals['H2S'] * fH2 * sqrt(fS2)
 
 		#SIXTH calculate fH2O using calc'd fH2 and knwn fO2 value
-		fH2O = C * sD * fH2
+		fH2O = K_vals['H2O'] * sqrt(fO2) * fH2
 
 		#TODO raise exception if a fugacity is negative or zero.
 
-		return {'CO': fCO, 'CO2': fCO2, 'H2': fH2, 'H2O': fH2O, 'H2S': fH2S, 'O2': D, 'S2': fS2, 'SO2': fSO2}
+		return_dict = {'CO': fCO, 'CO2': fCO2, 'H2': fH2, 'H2O': fH2O, 'H2S': fH2S, 'O2': fO2, 'S2': fS2, 'SO2': fSO2}
+
+		# perform checks/debugging
+		f_error = False
+
+		# check fH2O/fH2 ratio
+		if XHtot == 0:
+			fH_ratio_constraint = np.nan 
+		else:
+			fH_ratio_constraint = float(K_vals['H2O'] * sqrt(fO2))
+		fH_ratio_calculated = float(fH2O/fH2)
+		if XHtot != 0:
+			if round(fH_ratio_constraint,5) != round(fH_ratio_calculated,5):
+				f_error = True
+				print("fH ratio error")
+				print("fH2O/fH2 should be: " + str(fH_ratio_constraint))
+				print("fH2O/fH2 ratio is: " + str(fH_ratio_calculated))
+
+		# check fCO2/fCO ratio
+		if XCtot == 0:
+			fC_ratio_constraint = np.nan 
+		else:
+			fC_ratio_constraint = float(K_vals['CO2'] * sqrt(fO2))
+		fC_ratio_calculated = float(fCO2/fCO)
+		if XCtot != 0:
+			if round(fC_ratio_constraint,5) != round(fC_ratio_calculated,5):
+				f_error = True
+				print("fC ratio error")
+				print("fCO2/fCO should be: " + str(fC_ratio_constraint))
+				print("fCO2/fCO ratio is: " + str(fC_ratio_calculated))
+
+		# check fSO2/sqrt(fS2) ratio
+		if XStot == 0:
+			fS_ratio_constraint = np.nan 
+		else:
+			fS_ratio_constraint = float(K_vals['SO2'] * fO2)
+		fS_ratio_calculated = float(fSO2/sqrt(fS2))
+		if XStot != 0:
+			if round(fS_ratio_constraint,5) != round(fS_ratio_calculated,5):
+				f_error = True
+				print("fS ratio error")
+				print("fSO2/sqrt(fS2) should be: " + str(fS_ratio_constraint))
+				print("fSO2/sqrt(fS2) ratio is: " + str(fS_ratio_calculated))
+
+		# check fH2S/sqrt(fS2) ratio
+		if XStot == 0:
+			fHS_ratio_constraint = np.nan 
+		else:
+			fHS_ratio_constraint = float(K_vals['H2S'] * fH2)
+		fHS_ratio_calculated = float(fH2S/sqrt(fS2))
+		if XStot != 0:
+			if round(fHS_ratio_constraint,5) != round(fHS_ratio_calculated,5):
+				f_error = True
+				print("fHS ratio error")
+				print("fH2S/sqrt(fS2) should be: " + str(fHS_ratio_constraint))
+				print("fH2S/sqrt(fS2) ratio is: " + str(fHS_ratio_calculated))
+
+		if f_error is True:
+			# print out all fugacities to check they are sensible
+			for k, v in return_dict.items():
+				print("f" + str(k) + ": " + str(v))
+
+		return return_dict
 
 
 	def speciate(self, return_as='wtpercent', gammas='calculate', K_vals='calculate', fugacities='calculate'):
@@ -859,18 +967,26 @@ class MagmaticFluid(object):
 			X = fugacities[species] / (gammas[species] * press)
 			X_dict[species] = X
 
+		# print("fugacities: " + str(fugacities))
+		# print("Pre-norm mol fracs: " + str(X_dict))
+		# print("Pre-normalization sum: " + str(sum(X_dict.values())))
+		# print("\n")
+
+		# Normalize and fix O2 since fO2 is input and should not be adjusted during norm
+		norm = normalize_fluid_FixedOxygen(X_dict, units='molfrac')
+
 		#TODO test all these types...
 		if return_as == 'wtpercent':
-			return molfrac_to_wtpercent(X_dict)
+			return molfrac_to_wtpercent(norm)
 
 		if return_as == 'molpercent':
 			molpercent_dict = {}
-			for key, value in X_dict.items():
+			for key, value in norm.items():
 				molpercent_dict[key] = value*100.0
 			return molpercent_dict
 
 		if return_as == 'molfrac':
-			return {key: value/sum(X_dict.values()) for key,value in X_dict.items()}
+			return {key: value/sum(norm.values()) for key,value in norm.items()}
 
 		#TODO raise exception if something other than 'wtpercent', 'molpercent' or 'molfrac' is passed?
 
