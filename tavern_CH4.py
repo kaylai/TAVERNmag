@@ -759,7 +759,6 @@ class MagmaticFluid(object):
 		XHtot = XH2Otot * (0.6666)
 		XStot = XStot
 		XCtot = XCO2tot * (0.3333)
-		XOtot = XH2Otot * (0.3333) + XCO2tot * (0.6666)
 
 		B = gammas['H2']
 		P = self.press
@@ -776,25 +775,68 @@ class MagmaticFluid(object):
 		N = gammas['CO2']
 		Q = gammas['CO']
 
-		#FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
+		# #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
+		# def equations(p):
+		# 	fH2, fS2 = p
+		# 	return 	(
+		# 				( (fH2/(B*P)) 	+ ((Rational(2.0) * C * fH2 * sD)/(Rational(3.0) * E * P))		+ ((Rational(2.0) * F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P)) 	- XHtot), 
+		# 				( (fS2/(J * P)) 	+ ((F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P))	+ ((K * D * sqrt(abs(fS2)))/(Rational(3.0) * L * P))		- XStot)
+		# 			)
+
+		# fH2_a, fS2_a = fsolve(equations, (1, 1))
+		# fH2 = abs(fH2_a)
+		# fS2 = abs(fS2_a)
+
+		# #SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
+		# fCO = symbols('fCO') #for sympy
+
+		# # FIRST calculate fCO (eqn 10 in Iacovino, 2015) using sympy
+		# if XCtot == 0:
+		# 	fCO = 0
+		# else:
+		# 	fCO = symbols('fCO') #for sympy
+
+		# 	equation = (((K_vals['CO2'] * fCO * sD)/(Rational(3.0) * gammas['CO2'] * P)) +
+		# 				((fCO)/(Rational(2.0) * gammas['CO'] * P)) +
+		# 				(()) -
+		# 				XCtot)
+		# 	fCO = solve(equation, fCO)[0] #newly implemented sympy way
+
+		# FIRST calculate fH2, fS2, and fCO using fsolve, 3 eqns; 3 unknowns (extention of eqn 9 in Iacovino, 2015)
 		def equations(p):
-			fH2, fS2 = p
+			fH2, fS2, fCO = p
 			return 	(
-						( (fH2/(B*P)) 	+ ((Rational(2.0) * C * fH2 * sD)/(Rational(3.0) * E * P))		+ ((Rational(2.0) * F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P)) 	- XHtot), 
-						( (fS2/(J * P)) 	+ ((F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P))	+ ((K * D * sqrt(abs(fS2)))/(Rational(3.0) * L * P))		- XStot)
+						( (fH2/(B*P)) + 
+							((Rational(2.0) * C * fH2 * sD)/(Rational(3.0) * E * P)) + 
+							((Rational(2.0) * F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P)) + 
+							((Rational(4.0) * fCO * fH2**2)/(Rational(5.0) * K_vals['CH4'] * K_vals['H2O'] * sD * gammas['CH4'] * P)) -
+							XHtot), 
+						( (fS2/(J * P)) +
+							((F * fH2 * sqrt(abs(fS2)))/(Rational(3.0) * G * P)) +
+							((K * D * sqrt(abs(fS2)))/(Rational(3.0) * L * P)) - 
+							XStot),
+						( (fCO/(Rational(2.0) * gammas['CO'] * P)) +
+							((K_vals['CO2'] * fCO * sD)/(Rational(3.0) * gammas['CO2'] * P)) +
+							((fCO * fH2**2)/(Rational(5.0) * K_vals['CH4'] * K_vals['H2O'] * sD * gammas['CH4'] * P)) -
+							XCtot)
 					)
 
-		fH2_a, fS2_a = fsolve(equations, (1, 1))
-		fH2 = abs(fH2_a)
-		fS2 = abs(fS2_a)
-		#print("fS2 = ")
-		#print(fS2)
+		fH2_a, fS2_a, fCO_a = fsolve(equations, (P, P, P))
 
-		#SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
-		fCO = symbols('fCO') #for sympy
+		if XHtot == 0:
+			fH2 = 0
+		else:
+			fH2 = abs(fH2_a)
 
-		equation = (((K_vals['CO2'] * fCO * sD)/(Rational(3.0) * gammas['CO2'] * P)) + ((fCO)/(Rational(2.0) * gammas['CO'] * P))	- XCtot)
-		fCO = solve(equation, fCO)[0] #newly implemented sympy way
+		if XStot == 0:
+			fS2 = 0
+		else:
+			fS2 = abs(fS2_a)
+
+		if XCtot == 0:
+			fCO = 0
+		else:
+			fCO = abs(fCO_a)
 
 		#THIRD calculate fCO2 using calc'd fCO and known fO2 value
 		fCO2 = K_vals['CO2'] * fCO * sD
@@ -850,14 +892,16 @@ class MagmaticFluid(object):
 
 		press = self.press 
 
-		if isinstance(gammas,str):
+		if gammas is 'calculate':
 			gammas = calc_gammas(self.temp, self.press, species="all")
 
-		if isinstance(K_vals,str):
+		if K_vals is 'calculate':
 			K_vals = calc_Ks(self.temp, species="all")
 
-		if isinstance(fugacities,str):
+		if fugacities is 'calculate':
 			fugacities = self.fugacities()
+
+		print("fugacities: " + str(fugacities))
 
 		X_dict = {}
 		for species in fluid_species_names:
