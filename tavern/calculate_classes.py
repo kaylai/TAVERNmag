@@ -378,7 +378,7 @@ class calculate_fugacities(Calculate):
             fH_ratio_constraint = np.nan 
         else:
             fH_ratio_constraint = float(K_vals['H2O'] * math.sqrt(fO2))
-        fH_ratio_calculated = float(fH2O/fH2)
+            fH_ratio_calculated = float(fH2O/fH2)
         if XHtot != 0:
             if round(fH_ratio_constraint,5) != round(fH_ratio_calculated,5):
                 f_error = True
@@ -391,7 +391,7 @@ class calculate_fugacities(Calculate):
             fC_ratio_constraint = np.nan 
         else:
             fC_ratio_constraint = float(K_vals['CO2'] * math.sqrt(fO2))
-        fC_ratio_calculated = float(fCO2/fCO)
+            fC_ratio_calculated = float(fCO2/fCO)
         if XCtot != 0:
             if round(fC_ratio_constraint,5) != round(fC_ratio_calculated,5):
                 f_error = True
@@ -404,7 +404,7 @@ class calculate_fugacities(Calculate):
             fS_ratio_constraint = np.nan 
         else:
             fS_ratio_constraint = float(K_vals['SO2'] * fO2)
-        fS_ratio_calculated = float(fSO2/math.sqrt(fS2))
+            fS_ratio_calculated = float(fSO2/math.sqrt(fS2))
         if XStot != 0:
             if round(fS_ratio_constraint,5) != round(fS_ratio_calculated,5):
                 f_error = True
@@ -417,7 +417,7 @@ class calculate_fugacities(Calculate):
             fHS_ratio_constraint = np.nan 
         else:
             fHS_ratio_constraint = float(K_vals['H2S'] * fH2)
-        fHS_ratio_calculated = float(fH2S/math.sqrt(fS2))
+            fHS_ratio_calculated = float(fH2S/math.sqrt(fS2))
         if XStot != 0:
             if round(fHS_ratio_constraint,5) != round(fHS_ratio_calculated,5):
                 f_error = True
