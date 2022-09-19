@@ -332,6 +332,10 @@ class Sample(object):
         
         simple_fluid_composition = self._normalize_Standard(simple_fluid_unnorm)
 
+        # if no units passed, get default
+        if units == None:
+            units = self.default_units
+
         # Get the requested type of composition
         if units == 'wtpercent':
             converted = simple_fluid_composition
