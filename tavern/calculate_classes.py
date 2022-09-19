@@ -663,11 +663,16 @@ class calculate_speciation(Calculate):
 
         # Normalize and fix O2 since fO2 is input and should not be adjusted during norm
         norm = self.normalize_fluid_FixedOxygen(X_dict, units='molfrac')
+        print("norm in molfrac")
+        print(norm)
 
         speciated_default_units = self.return_default_units(sample, norm, units='molfrac', **kwargs)
+        print("speciated in default units")
+        print(speciated_default_units)
 
         return_sample = sample_class.MagmaticFluid(speciated_default_units,
-                                                   units=sample.default_units)
+                                                   units=sample.default_units,
+                                                   default_units=sample.default_units)
 
         return return_sample
 
