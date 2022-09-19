@@ -2,8 +2,10 @@ from abc import abstractmethod
 import math
 import sympy
 import numpy as np
+from scipy.optimize import fsolve
+import warnings as w
 
-from tavern import core, fO2_buffers, sample_class
+from tavern import core, fO2_buffers, sample_class, sums
 
 from copy import deepcopy, copy
 
@@ -256,7 +258,7 @@ class calculate_fugacities(Calculate):
     Parameters
     ----------
     sample: MagmaticFluid class
-        Composition of the magmatic fluid as MagmaticFluid object.
+        Composition of the simple (H2O, CO2, S) magmatic fluid as MagmaticFluid object.
     pressure:   float
         Pressure of the system in bars.
     temperature:    float
@@ -274,6 +276,10 @@ class calculate_fugacities(Calculate):
         Optional. Equilibrium constants of reaction.
         If K values are not passed, they will be calculated.
         Format: {'H2O': value, 'CO2': value, 'SO2': value, 'H2S': value}
+    opt: str
+        Optional. Default value is 'gekko' in which case the GEKKO library will be used for
+        optimization of fS2 and fH2. Other options are 'leastsq' (scipy.optimize.leastsq) and
+        'least_squares' (scipy.optimize.least_squares).
 
     Returns
     -------
@@ -283,7 +289,14 @@ class calculate_fugacities(Calculate):
     """
     def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta, gammas='calculate',
                   K_vals='calculate', opt='gekko', **kwargs):
-        composition_molfrac = sample.get_composition(units='molfrac')
+        # if user passing alread speciated composition, simplify it
+        required_species = {"H2O": "H2O", "CO2": "CO2", "S": "S"}
+        if set(sample.get_composition().keys()) <= set(required_species.keys()):
+            composition_molfrac = sample.get_composition(units='molfrac') 
+        else:
+            composition_molfrac = sample.get_simplified_fluid_composition(units='molfrac',
+                                                                          warnings=False)            
+
         logfO2 = fO2_buffers.calc_logfO2_from_buffer(pressure=pressure, temperature=temperature,
                                                      buffer=fO2_buffer, delta=fO2_delta)
         fO2 = 10.0**logfO2
@@ -521,6 +534,9 @@ class calculate_fugacities(Calculate):
             for k, v in return_dict.items():
                 print("f" + str(k) + ": " + str(v))
 
+        # set object's self.fugacities variable
+        sample.set_fugacities(return_dict)
+
         return return_dict
 
 
@@ -650,4 +666,387 @@ class calculate_speciation(Calculate):
 
         speciated_default_units = self.return_default_units(sample, norm, units='molfrac', **kwargs)
 
-        return speciated_default_units
+        return_sample = sample_class.MagmaticFluid(speciated_default_units,
+                                                   units=sample.default_units)
+
+        return return_sample
+
+
+class respeciate_fluid(Calculate):
+    """Takes in a speciated fluid of given composition in terms of CO, CO2, H2, H2O, H2S, O2, S2,
+    and SO2 and returns that fluid respeciated at given conditions.
+
+    Parameters
+    ----------
+    sample: MagmaticFluid class
+        Composition of the magmatic fluid as MagmaticFluid object.
+
+    pressure: float
+        Pressure at which to respeciate the fluid, in bars.
+
+    temperature: float
+        Temperature at which to respeciate the fluid, in degrees C.
+
+    fO2_buffer: str
+        Name of new buffer for which to calculate fO2. Can be one of 'QFM' or 'NNO'.
+
+    fO2_delta: float
+        Deviation from named buffer in log units. For example, for QFM+2, enter 'QFM' as the
+        fO2_buffer and 2 as the fO2_delta.
+
+    Returns
+    -------
+    MagmaticFluid object
+        Fluid composition after respeciation.
+    """
+
+    def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta):
+        # Calculate new fugacity coefficients and equilibrium constants at given conditions.
+        gammas = calculate_fugacity_coefficients(pressure=pressure, temperature=temperature).result
+        Ks = calculate_equilibrium_constants(temperature=temperature).result
+
+        #Recalculate fO2 at new pressure
+        logfO2_res = fO2_buffers.calc_logfO2_from_buffer(temperature=temperature, buffer=fO2_buffer,
+                                             delta=fO2_delta, pressure=pressure)
+        fO2_res = 10**(logfO2_res)
+
+        # get composition in mole fraction
+        fluid_comp = sample.get_composition(units='molfrac')
+
+        # Name some local variables for clarity in below equations. If a particular species is not
+        # passed, it will be assigned a value of 0.0 
+        if 'CO' in fluid_comp:
+            CO = fluid_comp["CO"]
+        else:
+            CO = 0.0
+        if 'CO2' in fluid_comp:
+            CO2 = fluid_comp["CO2"]
+        else:
+            CO2 = 0.0
+        if 'H2' in fluid_comp:
+            H2 = fluid_comp["H2"]
+        else:
+            H2 = 0.0
+        if 'H2O' in fluid_comp:
+            H2O = fluid_comp["H2O"]
+        else:
+            H2O = 0.0
+        if 'H2S' in fluid_comp:
+            H2S = fluid_comp["H2S"]
+        else:
+            H2S = 0.0
+        if 'O2' in fluid_comp:
+            O2 = fluid_comp["O2"]
+        else:
+            O2 = 0.0
+        if 'S2' in fluid_comp:
+            S2 = fluid_comp["S2"]
+        else:
+            S2 = 0.0
+        if 'SO2' in fluid_comp:
+            SO2 = fluid_comp["SO2"]
+        else:
+            SO2 = 0.0
+
+        XHtot = H2 + (0.666666)*H2O + (0.666666)*H2S
+        XStot = S2 + (0.333333)*H2S + (0.333333)*SO2
+        XCtot = (0.333333)*CO2 + (0.5)*CO
+        XOtot = O2 + (0.666666)*CO2 + (0.5)*CO + (0.333333)*H2O + (0.666666)*SO2
+
+        #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
+
+        #TODO - figure out how to do these two equations with two unknowns and set bounds that roots must be >0
+        #Used least_squares to do this in a similar implimentation in this very script, but I can't
+        #figureo out how to get it to work with two equations instead of just one.
+        #THIS IS IMPORTANT since right now it's a total non-mathematical flub.
+
+        def equations(p):
+            fH2, fS2 = p
+            return  (
+                     ((fH2/(gammas["H2"]*pressure))    +
+                        ((sympy.Rational(2.0) * Ks["H2O"] * fH2 * sympy.sqrt(fO2_res))/
+                            (sympy.Rational(3.0) * gammas["H2O"] * pressure)) +
+                        ((sympy.Rational(2.0) * Ks["H2S"] * fH2 * sympy.sqrt(abs(fS2)))/
+                            (sympy.Rational(3.0) * gammas["H2S"] * pressure)) -
+                        XHtot), 
+                     ((fS2/(gammas["S2"] * pressure))  +
+                        ((Ks["H2S"] * fH2 * sympy.sqrt(abs(fS2)))/
+                            (sympy.Rational(3.0) * gammas["H2S"] * pressure)) +
+                        ((Ks["SO2"] * fO2_res * sympy.sqrt(abs(fS2)))/
+                            (sympy.Rational(3.0) * gammas["SO2"] * pressure)) -
+                        XStot)
+                    )
+
+        fH2_a, fS2_a = fsolve(equations, (1, 1))
+        fH2 = abs(fH2_a)
+        fS2 = abs(fS2_a)
+
+        #SECOND calculate fCO (eqn 10 in Iacovino, 2015)
+        fCO = sympy.symbols('fCO') #for sympy
+        equation = (((Ks["CO2"] * fCO * sympy.sqrt(fO2_res))/(3.0 * gammas["CO2"] * pressure)) +
+                    ((fCO)/(2.0 * gammas["CO"] * pressure)) -
+                    XCtot)
+        fCO = sympy.solve(equation, fCO)[0] #newly implemented sympy way
+
+        #THIRD calculate fCO2 using calc'd fCO and known fO2 value
+        fCO2 = Ks["CO2"] * fCO * math.sqrt(fO2_res)
+
+        #FOURTH calcualte fSO2 using calc'd fS2 and known fO2 value
+        fSO2 = Ks["SO2"] * math.sqrt(fS2) * fO2_res
+
+        #FIFTH calculate fH2S using calc'd fH2 and fS2 values
+        fH2S = Ks["H2S"] * fH2 * math.sqrt(fS2)
+
+        #SIXTH calculate fH2O using calc'd fH2 and knwn fO2 value
+        fH2O = Ks["H2O"] * math.sqrt(fO2_res) * fH2 
+
+        new_fugacities = {"CO": fCO,
+                            "CO2": fCO2,
+                            "H2": fH2,
+                            "H2O": fH2O,
+                            "H2S": fH2S,
+                            "O2": fO2_res,
+                            "S2": fS2,
+                            "SO2": fSO2}
+
+        X_dict = {}
+        for species in core.fluid_species_names:
+            X = new_fugacities[species] / (gammas[species] * pressure)
+            X_dict[species] = X
+
+        X_dict = {key: value/sum(X_dict.values()) for key,value in X_dict.items()}
+
+        return_sample = sample_class.MagmaticFluid(X_dict, units="molfrac")
+        
+        return return_sample
+
+
+class calculate_fH2O_from_melt(Calculate):
+    """ Calculates the H2O fugacity using the model of Moore (1998) based on major element silicate
+    melt composition, including H2O concentration. NOTE: Only valid up to 3,000 bars.
+
+    Parameters
+    ----------
+    sample: SilicateMelt class
+        The silicate melt composition, including H2O, as a SilicateMelt object.
+    pressure: float
+        Pressure of the system in bars.
+    temperature: float
+        Temperature of the system in degrees C.
+
+    Returns
+    -------
+    Calculate object. Access results by fetching the result property.
+    """
+
+    def calculate(self, sample, pressure, temperature, **kwargs):
+        #define constants
+        a = 2565.0
+        a_err = 362.0 #standard error
+        b_Al2O3 = -1.997
+        b_Al2O3_err = 0.706
+        b_FeOt = -0.9275
+        b_FeOt_err = 0.394
+        b_Na2O = 2.736
+        b_Na2O_err = 0.871
+        c = 1.171
+        c_err = 0.069
+        d = -14.21
+        d_err = 0.54
+        XH2O_err = 0.148 #reported 1 sigma error
+
+        melt_comp_X = sample.get_composition(units="molfrac")
+        tempk = temperature + 273.15
+
+        #get FeOt from iron input as FeO and Fe2O3
+        FeOt = melt_comp_X["FeO"] + 0.8998*melt_comp_X["Fe2O3"]
+
+        #TODO assert melt_comp_X["H2O"] > 0
+
+        #note math.log with one argument passed returns natural log
+        ln_fH2O = (((2.0 * math.log(melt_comp_X["H2O"])) - (a/tempk) - 
+                    ((b_Al2O3 * melt_comp_X["Al2O3"] * (pressure/tempk)) + 
+                     (b_FeOt * FeOt * (pressure/tempk)) + 
+                     (b_Na2O * melt_comp_X["Na2O"] * (pressure/tempk))) - 
+                     d)/c)
+
+        return math.exp(ln_fH2O)
+
+
+class calculate_degassed_fluid_composition(Calculate):
+    """ Calculates the composition of fluid degassed from a melt as a magma moves from a deeper
+    storage retion (magma a) to a more shallow storage (magma b).
+
+    Parameters
+    ----------
+    deep_volatiles: tuple
+        Tuple of volatile concentration in wt percent in magma a (H2O, CO2, S)
+    shallow_volatiles: tuple
+        Tuple of volatile concentration in wt percent in magma b (H2O, CO2, S)
+    F:  float
+        Optional. If no value is passed, F is set to 1.0.
+        Value of F, or 100 minus the amount of crystallization differentiation required 
+        to produce daughter magma b from parent magma a. This is equivalent to the 
+        percentage residual melt that magma b represents. Use F if magma a and magma b are
+        related by fractionalal crystallization. This adjusts appropriately for the difference in
+        mass of the two magmatic bodies.
+        
+    Returns
+    -------
+    MagmaticFluid object
+        Bulk fluid composition in wt percent with keys "H2O", "CO2", "S". NOTE: Fluid is not
+        speciated as fO2 is not considerred.
+    """
+
+    def calculate(self, deep_volatiles, shallow_volatiles, F=1.0, **kwargs):
+        deep_vols = deep_volatiles.get_composition(units='wtpercent')
+        shallow_vols = shallow_volatiles.get_composition(units='wtpercent')
+
+        delta_H2O = (deep_vols["H2O"] / F) - shallow_vols["H2O"]
+        delta_CO2 = (deep_vols["CO2"] / F) - shallow_vols["CO2"]
+        delta_S = (deep_vols["S"] / F) - shallow_vols["S"]
+
+        sum_vols = delta_H2O + delta_CO2 + delta_S
+
+        norm_H2O = 100.0 * delta_H2O / sum_vols
+        norm_CO2 = 100.0 * delta_CO2 / sum_vols
+        norm_S = 100.0 * delta_S / sum_vols
+
+        result = {"H2O":norm_H2O, "CO2":norm_CO2, "S":norm_S}
+        result_sample = sample_class.MagmaticFluid(result, units="wtpercent")
+
+        return result_sample
+
+
+class match(Calculate):
+    """Runs the simple matching model and returns all possible combinations of sub_gases, scaled
+    each at 0-100%, that could produce the surface_gas composition to within a user defined error
+    (called "threshold").
+
+    Parameters
+    ----------
+    sub_gases: dict
+        Dictionary of dictionaries of gas compositions where keys are user-defined names for each
+        gas and values are MagmaticFluid objects. Gas compositions will be simplified for matching.
+
+    surface_gas: MagmaticFluid
+        MagmaticFluid object with gas composition of surface gas. Gas compositions will be
+        simplified for matching.
+
+    threshold: float
+        Optional. Default value is 0.10 (10%). The threshold defines how closely a combination of
+        sub_gases must match the surface_gas, expressed as relative percent of the surface_gas
+        value.
+
+    Returns
+    -------
+    ???
+    """
+    def sums(self, length, total_sum, step):
+        """Returns a list of all possible arrays of integers, where the sum of all array elements is
+        'total_sum', where each array is 'length' values long.
+
+        NOTE: This function can take an extremely long amount of time. Each +1 increase to the
+        "length" value results in an exponential increase in computation time. Timing was tested on
+        a 2014 MacBook Pro with 3 GHz processor, 16 GB memory, and solid state drive, using one
+        core. Timing for length=5 ~2 seconds. Timing for length=6 ~230 seconds.
+
+        Parameters
+        ----------
+        length: int
+            Length of generated arrays. Example: length=3 gives a list of arrays (value, value,
+            value)
+
+        total_sum: int
+            All values within each array must sum to total_sum. Example: length=3, total_sum=2
+            gives: (2, 0, 0), (1, 0, 1), (1, 1, 0), (0, 0, 2), (0, 2, 0), (0, 1, 1)
+
+        step: float
+            Step size between each value of the array
+
+        Returns
+        -------
+        generator object
+            Generator object of all generated arrays. To return a list of arrays, pass
+            list(sums(length, total_sum))
+
+        """
+        if length == 1:
+            yield (total_sum,)
+        else:
+            for value in range(total_sum + 1):
+                for permutation in self.sums(length - 1, total_sum - value, step):
+                    remainder = value % step
+                    if remainder == 0:
+                        yield (value,) + permutation
+
+    def calculate(self, sub_gases, surface_gas, threshold=0.1, **kwargs):
+        # ensure only H2O, CO2, SO2 in surface_gas
+        required_species = {"H2O": "H2O", "CO2": "CO2", "SO2": "SO2"}
+        if set(surface_gas.get_composition().keys()) <= set(required_species.keys()):
+            # get dict of composition from surface_gas
+            surface_gas_dict = surface_gas.get_composition(units='wtpercent')
+        else:
+            surface_gas_dict = surface_gas.get_simplified_fluid_composition(units='wtpercent',
+                                                                            S_species="SO2",
+                                                                            warnings=False)
+
+        # if user passing alread speciated composition, simplify it
+        sub_gases_simpl = {}
+        for gasname, gascomp in sub_gases.items():
+            if set(gascomp.get_composition().keys()) <= set(required_species.keys()):
+                composition_wtper = gascomp.get_composition(units='wtpercent') 
+            else:
+                composition_wtper = gascomp.get_simplified_fluid_composition(units='wtpercent',
+                                                                             S_species="SO2",
+                                                                             warnings=False)                
+            sub_gases_simpl[gasname] = composition_wtper
+
+        # split up gases into CO2, H2O, and SO2 groups
+        sub_CO2 = [gas_dict["CO2"] for gas_name, gas_dict in sub_gases_simpl.items()]
+        sub_H2O = [gas_dict["H2O"] for gas_name, gas_dict in sub_gases_simpl.items()]
+        sub_SO2 = [gas_dict["SO2"] for gas_name, gas_dict in sub_gases_simpl.items()]
+
+        # get number of sub_gases passed
+        number_of_subgases = len(list(sub_gases.keys()))
+
+        # generate all possible gas combinations
+        print("Generating all possible gas combinations...")
+        if number_of_subgases < 6:
+            pos = list(self.sums(number_of_subgases, 100, 1))
+        elif number_of_subgases == 6:
+            pos = sums.sums_6_100_1() #TODO pulling in this file isn't working...
+        # elif number_of_subgases == 7: #THIS DIDN'T EVEN FINISH ON MY COMPUTER FOR HOURS!
+        #     pos = sums.sums_7_100_1()
+        else:
+            w.warn("This is a very large number of sub_gases and will generate a very large set of "
+                   "possible gases. This may take hours...",
+                   RuntimeWarning, stacklevel=2)
+            pos = list(self.sums(number_of_subgases, 100, 1))
+
+        print(pos)
+
+        result_list = []
+        sum_CO2 = 0.0
+        sum_H2O = 0.0
+        sum_SO2 = 0.0
+        
+        iterno = 0
+        for i in range(len(sub_gases_simpl)):
+            for combo in pos:
+                iterno += 1
+                percent = iterno/len(sub_gases_simpl)
+                core.status_bar.status_bar(percent, list(sub_gases_simpl.keys())[i])
+                sum_CO2 += sub_CO2[i] * (combo[i]/100.0)
+                sum_H2O += sub_H2O[i] * (combo[i]/100.0)
+                sum_SO2 += sub_SO2[i] * (combo[i]/100.0)
+
+                if (sum_CO2 < (surface_gas_dict["CO2"] + surface_gas_dict["CO2"]*threshold) and
+                    sum_CO2 > (surface_gas_dict["CO2"] - surface_gas_dict["CO2"]*threshold)):
+                    if (sum_H2O < (surface_gas_dict["H2O"] + surface_gas_dict["H2O"]*threshold) and
+                        sum_H2O > (surface_gas_dict["H2O"] - surface_gas_dict["H2O"]*threshold)):
+                        if (sum_SO2 < (surface_gas_dict["SO2"] + surface_gas_dict["SO2"]*threshold) and
+                            sum_SO2 > (surface_gas_dict["SO2"] - surface_gas_dict["SO2"]*threshold)):
+                            result_list.append(combo)
+
+        return result_list

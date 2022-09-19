@@ -1,4 +1,5 @@
 import pandas as pd
+import warnings as w
 
 from tavern import core
 
@@ -167,10 +168,9 @@ class Sample(object):
         # note that here composition is gotten as wtpercent
         if exclude_volatiles:
             composition = self._composition.copy()
-            if 'H2O' in composition.index:
-                composition = composition.drop(index='H2O')
-            if 'CO2' in composition.index:
-                composition = composition.drop(index='CO2')
+            for fspec in core.fluid_species_names:
+                if fspec in composition.index:
+                    composition = composition.drop(index=fspec)
             if 'S' in composition.index:
                 composition = composition.drop(index='S')
         else:
@@ -179,7 +179,7 @@ class Sample(object):
         # Check for a species being provided, if so, work out which units to return.
         if isinstance(species, str):
             if species in composition.index:  # if the requested species has a value, proceed
-                if species in core.oxides:
+                if species in core.oxideMass.keys():
                     if units in ['molpercent, molfrac'] or units is None:
                         units = 'wtpercent'
                 else:
@@ -222,6 +222,131 @@ class Sample(object):
                 w.warn("Cannot return single species as Sample class. Returning as float.",
                        RuntimeWarning, stacklevel=2)
             return final[species]
+
+    def get_simplified_fluid_composition(self, units=None, H_species="H2O", C_species="CO2",
+                                         S_species="S", asSampleClass=False, oxide_masses={},
+                                         warnings=False):
+        """ Returns a fluid composition in terms of H2O, CO2, S; representing the total H, C, and S
+        inventories of the fluid (e.g., H2O includes H2O and H2 as H2O).
+
+        Parameters
+        ----------
+        units:     NoneType or str
+            The units of composition to return, one of:
+            - wtpercent (default)
+            - molpercent
+            - molfrac
+            If NoneType is passed the default units option will be used (self.default_type).
+
+        H_species:    str
+            Optional. Specify which species to return for total hydrogen. Default is "H2O".
+
+        C_species:  str
+            Optional. Specify which species to return total carbon. Default is "CO2".
+
+        S_species:  str
+            Optional. Specify which species to return total sulfur. Default is "S".
+
+        asSampleClass:  bool
+            If True, the sample composition will be returned as a sample class, with default
+            options. In this case any normalization instructions will be ignored.
+
+        oxide_masses:  dict
+            Specify here any oxide masses that should be changed from the tavern default. This
+            might be useful for recreating other implementations of models that use slightly
+            different molecular masses. The default values in tavern are given to 3 dp.
+
+        Returns
+        -------
+        pandas.Series or Sample class
+            The sample composition, as specified.
+        """
+        # Ensure all complex fluid keys are present in sample. If not, add and give value of 0.0
+        for fluidname in core.fluid_species_names:
+            if fluidname in self.get_composition().keys():
+                pass 
+            else:
+                self.change_composition({fluidname: 0.0})
+
+        # Process the oxide_masses variable, if necessary:
+        oxideMass = copy(core.oxideMass)
+        for ox in oxide_masses:
+            if ox in oxideMass:
+                oxideMass[ox] = oxide_masses[ox]
+            else:
+                raise core.InputError("The oxide name provided in oxide_masses is not recognised.")
+
+        complex_fluid_composition = self.get_composition(units='wtpercent')
+        fl_specs_not_in_comp = []
+        for fluid_spec in core.fluid_species_names:
+            if fluid_spec not in complex_fluid_composition.index:
+                fl_specs_not_in_comp.append(fluid_spec)
+        if len(fl_specs_not_in_comp):
+            w.warn("Warning: " + str(fl_specs_not_in_comp) + " not found in input composition.",
+                   RuntimeWarning, stacklevel=2)
+
+        simp_H2O = (complex_fluid_composition["H2O"] + 
+                    complex_fluid_composition["H2"] * oxideMass["H2O"]/oxideMass["H2"])
+
+        simp_CO2 = (complex_fluid_composition["CO2"] +
+                    complex_fluid_composition["CO"] * oxideMass["CO2"]/oxideMass["CO"])
+
+        simp_S = (complex_fluid_composition["SO2"] * oxideMass["S"]/oxideMass["SO2"] +
+                    complex_fluid_composition["H2S"] * oxideMass["S"]/oxideMass["H2S"] +
+                    complex_fluid_composition["S2"] * oxideMass["S"]/oxideMass["S2"])
+
+        simple_fluid_unnorm = pd.Series({})
+        # check which species to return for H, C, and S inventories
+        if H_species == "H2O":
+            simple_fluid_unnorm["H2O"] = simp_H2O 
+        elif H_species == "H2":
+            simp_H2O *= (core.oxideMass["H2"]/core.oxideMass["H2O"])
+            simple_fluid_unnorm["H2"] = simp_H2O
+        elif H_species == "H":
+            simp_H2O *= (core.oxideMass["H"]/core.oxideMass["H2O"])
+            simple_fluid_unnorm["H"] = simp_H2O
+        else:
+            raise core.InputError("H_species must be one of 'H2O', 'H2', or 'H'.")
+
+        if C_species == "CO2":
+            simple_fluid_unnorm["CO2"] = simp_CO2
+        elif C_species == "CO":
+            simp_CO2 *= (core.oxideMass["CO"]/core.oxideMass["CO2"])
+            simple_fluid_unnorm["CO"] = simp_CO2
+        else:
+            raise core.InputError("C_species must be one of 'CO2' or 'CO'.")
+
+        if S_species == "S":
+            simple_fluid_unnorm["S"] = simp_S 
+        elif S_species == "SO2":
+            simp_S *= (core.oxideMass["SO2"]/core.oxideMass["S"])
+            simple_fluid_unnorm["SO2"] = simp_S
+        elif S_species == "H2S":
+            simp_S *= (core.oxideMass["H2S"]/core.oxideMass["S"])
+            simple_fluid_unnorm["H2S"] = simp_S
+        elif S_species == "S2":
+            simp_S *= (core.oxideMass["S2"]/core.oxideMass["S"])
+            simple_fluid_unnorm["S2"] = simp_S
+        else:
+            raise core.InputError("S_species must be one of 'S', 'SO2', 'H2S', or 'S2'.")
+        
+        simple_fluid_composition = self._normalize_Standard(simple_fluid_unnorm)
+
+        # Get the requested type of composition
+        if units == 'wtpercent':
+            converted = simple_fluid_composition
+        elif units == 'molpercent':
+            converted = self._wtpercent_to_molpercent(simple_fluid_composition, oxideMass=oxideMass)
+        elif units == 'molfrac':
+            converted = self._wtpercent_to_molfrac(simple_fluid_composition, oxideMass=oxideMass)
+        else:
+            raise core.InputError("The units must be one of 'wtpercent', 'molpercent', "
+                                  "or 'molfrac'.")
+
+        if asSampleClass is True:
+            return MagmaticFluid(converted)
+        else:
+            return converted
 
     def change_composition(self, new_composition, units='wtpercent', inplace=True):
         """
@@ -612,3 +737,186 @@ class Sample(object):
         molpercent = pd.Series(molfrac_dict)
 
         return molpercent
+
+
+class MagmaticFluid(Sample):
+    """ A generic class describing a fluid derived from a magma. A fluid must have the following
+    properties:
+
+    Attributes
+    ----------
+        composition: dict
+            Dict of volatile concentration in wt percent, mol percent, or mol fraction 
+            in fluid with keys H2O, CO2, S.
+        units: str
+            String defining whether fluid_comp is input as wt percent ("wtpercent"), 
+            mole percent ("molpercent"), or mole fraction ("molfrac"). Default is "wtpercent".
+        default_normalization:     None or str
+            The type of normalization to apply to the data by default. One of:
+                - None (no normalization)
+                - 'standard' (default): Normalizes an input composition to 100%.
+        default_units:     str
+            The type of composition to return by default, one of:
+            - wtpercent (default)
+            - molpercent
+            - molfrac
+    """
+
+    def __init__(self, composition, units='wtpercent', default_normalization='none',
+                 default_units='wtpercent', **kwargs):
+        """Return a MagmaticFluid object whose parameters are defined here."""
+        composition = deepcopy(composition)
+        
+        if isinstance(composition, dict):
+            composition = pd.Series(composition, dtype='float64')
+        elif isinstance(composition, pd.Series) is False:
+            raise core.InputError("The composition must be given as either a dictionary or a "
+                                  "pandas Series.")
+        
+        if units == "wtpercent":
+            self._composition = composition
+        elif units == "molpercent":
+            self._composition = self._moles_to_wtpercent(composition) 
+        elif units == "molfrac":
+            self._composition = self._moles_to_wtpercent(composition) 
+        else:
+            raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
+                                  "'molfrac'.")
+
+        if default_normalization not in ['none', 'standard']:
+            raise core.InputError("For a MagmaticFluid object, normalization can be one of "
+                                  "'none' or 'standard'.")
+
+        if default_units not in ['wtpercent', 'molpercent', 'molfrac']:
+            raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
+                                  "'molfrac'.")
+
+        composition = deepcopy(composition)
+        #self._composition = composition
+        self.units = units
+        self.default_normalization = default_normalization
+        self.default_units = default_units
+        self.sample_type = 'MagmaticFluid'
+
+    def set_fugacities(self, fugacities):
+        """Sets self.fugacities value for MagmaticFluid object so that they can be retrieved using
+        the get_fugacities() method.
+
+        Parameters
+        ----------
+        fugacities: dict
+            Fugacities of all species.
+
+        Returns
+        -------
+        Pass - sets self.fugacities as dict
+        """
+        self.fugacities = fugacities 
+
+        pass
+
+
+class SilicateMelt(Sample):
+    """ A silicate melt major oxide composition. A melt must have the following properties:
+
+    Attributes
+    ----------
+        composition: dict
+            Dict of major oxide concentrations in wt percent, mol percent, or mol fraction.
+        units: str
+            String defining whether fluid_comp is input as wt percent ("wtpercent"), 
+            mole percent ("molpercent"), or mole fraction ("molfrac"). Default is "wtpercent".
+        default_normalization:     None or str
+            The type of normalization to apply to the data by default. One of:
+                - None (no normalization)
+                - 'standard' (default): Normalizes an input composition to 100%.
+        default_units:     str
+            The type of composition to return by default, one of:
+            - wtpercent (default)
+            - molpercent
+            - molfrac
+    """
+
+    def __init__(self, composition, units='wtpercent', default_normalization='none',
+                 default_units='wtpercent', **kwargs):
+        """Return a SilicateMelt object whose parameters are defined here."""
+        composition = deepcopy(composition)
+        
+        if isinstance(composition, dict):
+            composition = pd.Series(composition, dtype='float64')
+        elif isinstance(composition, pd.Series) is False:
+            raise core.InputError("The composition must be given as either a dictionary or a "
+                                  "pandas Series.")
+        
+        if units == "wtpercent":
+            self._composition = composition
+        elif units == "molpercent":
+            self._composition = self._moles_to_wtpercent(composition) 
+        elif units == "molfrac":
+            self._composition = self._moles_to_wtpercent(composition) 
+        else:
+            raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
+                                  "'molfrac'.")
+
+        if default_normalization not in ['none', 'standard']:
+            raise core.InputError("For a MagmaticFluid object, normalization can be one of "
+                                  "'none' or 'standard'.")
+
+        if default_units not in ['wtpercent', 'molpercent', 'molfrac']:
+            raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
+                                  "'molfrac'.")
+
+        composition = deepcopy(composition)
+        #self._composition = composition
+        self.units = units
+        self.default_normalization = default_normalization
+        self.default_units = default_units
+        self.sample_type = 'SilicateMelt'
+
+    def get_dissolved_volatile_composition(self, normalization=None, units=None,
+                                           asSampleClass=False, oxide_masses={}):
+        """ Returns the dissolved volatile composition of a SilicateMelt object (H2O, CO2, and S)
+        in the format requested, normalized as requested.
+
+        Parameters
+        ----------
+
+        normalization:     NoneType or str
+            The type of normalization to apply to the data. One of:
+            - 'none' (no normalization)
+            - 'standard' (default): Normalizes an input composition to 100%.
+            If NoneType is passed the default normalization option will be used
+            (self.default_normalization).
+
+        units:     NoneType or str
+            The units of composition to return, one of:
+            - wtpercent (default)
+            - molpercent
+            - molfrac
+            If NoneType is passed the default units option will be used (self.default_type).
+
+        asSampleClass:  bool
+            If True, the sample composition will be returned as a sample class, with default
+            options. In this case any normalization instructions will be ignored.
+
+        oxide_masses:  dict
+            Specify here any oxide masses that should be changed from the tavern default. This
+            might be useful for recreating other implementations of models that use slightly
+            different molecular masses. The default values in tavern are given to 3 dp.
+
+        Returns
+        -------
+        pandas.Series, float, or Sample class
+            The sample composition, as specified.
+        """
+        if units is None:
+            units = self.units
+
+        H2O = self.get_composition(species="H2O", normalization=normalization, units=units,
+                                   asSampleClass=asSampleClass, oxide_masses=oxide_masses)
+        CO2 = self.get_composition(species="CO2", normalization=normalization, units=units,
+                                   asSampleClass=asSampleClass, oxide_masses=oxide_masses)
+        S = self.get_composition(species="S", normalization=normalization, units=units,
+                                 asSampleClass=asSampleClass, oxide_masses=oxide_masses)
+        ret_comp = Sample({"H2O": H2O, "CO2": CO2, "S":S}, units=units)
+        return ret_comp

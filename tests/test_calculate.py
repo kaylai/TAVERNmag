@@ -161,9 +161,10 @@ class TestSpeciation(unittest.TestCase):
                                                temperature=self.temperature,
                                                fO2_buffer=self.fO2_buffer,
                                                fO2_delta=self.fO2_delta).result
+        calcd_result_dict = calcd_result.get_composition()
         known_result = self.speciation_known
-        for k in calcd_result.keys():
-            self.assertAlmostEqual(calcd_result[k], known_result[k], places=4)
+        for k in calcd_result_dict.keys():
+            self.assertAlmostEqual(calcd_result_dict[k], known_result[k], places=4)
 
     def test_calculate_speciation_unitsMolPercent(self):
         calcd_result = tv.calculate_speciation(sample=self.sample_unitsMolPercent,
@@ -171,9 +172,10 @@ class TestSpeciation(unittest.TestCase):
                                                temperature=self.temperature,
                                                fO2_buffer=self.fO2_buffer,
                                                fO2_delta=self.fO2_delta).result
+        calcd_result_dict = calcd_result.get_composition()
         known_result = self.speciation_known
-        for k in calcd_result.keys():
-            self.assertAlmostEqual(calcd_result[k], known_result[k], places=4)
+        for k in calcd_result_dict.keys():
+            self.assertAlmostEqual(calcd_result_dict[k], known_result[k], places=4)
 
     def test_calculate_speciation_unitsMolFrac(self):
         calcd_result = tv.calculate_speciation(sample=self.sample_unitsMolFrac,
@@ -181,7 +183,8 @@ class TestSpeciation(unittest.TestCase):
                                                temperature=self.temperature,
                                                fO2_buffer=self.fO2_buffer,
                                                fO2_delta=self.fO2_delta).result
+        calcd_result_dict = calcd_result.get_composition()
         known_result = self.speciation_known
-        for k in calcd_result.keys():
-            self.assertAlmostEqual(calcd_result[k], known_result[k], places=3)
+        for k in calcd_result_dict.keys():
+            self.assertAlmostEqual(calcd_result_dict[k], known_result[k], places=3)
 

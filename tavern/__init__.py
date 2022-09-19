@@ -12,6 +12,7 @@ import tavern.core
 import tavern.calculate_classes
 import tavern.fO2_buffers
 import tavern.sample_class
+import tavern.model
 
 import pandas as pd
 
@@ -21,18 +22,37 @@ from copy import deepcopy, copy
 class calculate_fugacities(tavern.calculate_classes.calculate_fugacities):
 	pass
 
+
 class calculate_speciation(tavern.calculate_classes.calculate_speciation):
 	pass
+
 
 class calculate_fugacity_coefficients(tavern.calculate_classes.calculate_fugacity_coefficients):
 	pass
 
+
 class calculate_equilibrium_constants(tavern.calculate_classes.calculate_equilibrium_constants):
 	pass
 
+
+class calculate_degassed_fluid_composition(tavern.calculate_classes.calculate_degassed_fluid_composition):
+    pass
+
+
+class calculate_fH2O_from_melt(tavern.calculate_classes.calculate_fH2O_from_melt):
+    pass
+
+class match(tavern.calculate_classes.match):
+    pass
+
+# ------------ MODEL CLASS DEFINITIONS ------------ #
+class Model(tavern.model.Model):
+    pass
+
 # ------------ SAMPLE CLASS DEFINITIONS ------------ #
-class MagmaticFluid(sample_class.Sample):
-    """ A fluid derived from a magma. A fluid must have the following properties:
+class MagmaticFluid(sample_class.MagmaticFluid):
+    """ A generic class describing a fluid derived from a magma. A fluid must have the following
+    properties:
 
     Attributes
     ----------
@@ -52,39 +72,27 @@ class MagmaticFluid(sample_class.Sample):
             - molpercent
             - molfrac
     """
+    pass
 
-    def __init__(self, composition, units='wtpercent', default_normalization='none',
-                 default_units='wtpercent', **kwargs):
-        """Return a MagmaticFluid object whose parameters are defined here."""
-        composition = deepcopy(composition)
-        
-        if isinstance(composition, dict):
-            composition = pd.Series(composition, dtype='float64')
-        elif isinstance(composition, pd.Series) is False:
-            raise core.InputError("The composition must be given as either a dictionary or a "
-                                  "pandas Series.")
-        
-        if units == "wtpercent":
-            self._composition = composition
-        elif units == "molpercent":
-            self._composition = self._moles_to_wtpercent(composition) 
-        elif units == "molfrac":
-            self._composition = self._moles_to_wtpercent(composition) 
-        else:
-            raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
-                                  "'molfrac'.")
 
-        if default_normalization not in ['none', 'standard']:
-            raise core.InputError("For a MagmaticFluid object, normalization can be one of "
-                                  "'none' or 'standard'.")
+class SilicateMelt(sample_class.SilicateMelt):
+    """ A silicate melt major oxide composition. A melt must have the following properties:
 
-        if default_units not in ['wtpercent', 'molpercent', 'molfrac']:
-            raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
-                                  "'molfrac'.")
-
-        composition = deepcopy(composition)
-        #self._composition = composition
-        self.units = units
-        self.default_normalization = default_normalization
-        self.default_units = default_units
-        self.sample_type = 'MagmaticFluid'
+    Attributes
+    ----------
+        composition: dict
+            Dict of major oxide concentrations in wt percent, mol percent, or mol fraction.
+        units: str
+            String defining whether fluid_comp is input as wt percent ("wtpercent"), 
+            mole percent ("molpercent"), or mole fraction ("molfrac"). Default is "wtpercent".
+        default_normalization:     None or str
+            The type of normalization to apply to the data by default. One of:
+                - None (no normalization)
+                - 'standard' (default): Normalizes an input composition to 100%.
+        default_units:     str
+            The type of composition to return by default, one of:
+            - wtpercent (default)
+            - molpercent
+            - molfrac
+    """
+    pass

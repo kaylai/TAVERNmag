@@ -147,7 +147,6 @@ def calc_logfO2_from_buffer(temperature, buffer, delta, pressure=1.0):
 
     if buffer == 'NNO':
         log_fO2 = calc_NNO(pressure, temperature)
-        pass
 
     if buffer == 'IW':
         log_fO2 = calc_IW(pressure, temperature)
