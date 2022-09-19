@@ -286,14 +286,22 @@ class Sample(object):
                    RuntimeWarning, stacklevel=2)
 
         simp_H2O = (complex_fluid_composition["H2O"] + 
-                    complex_fluid_composition["H2"] * oxideMass["H2O"]/oxideMass["H2"])
+                    complex_fluid_composition["H2"] * oxideMass["H2O"]/oxideMass["H2"])# +
+                    #complex_fluid_composition["H2S"] * oxideMass["H2O"]/oxideMass["H2S"]) #TODO is this line needed?
 
         simp_CO2 = (complex_fluid_composition["CO2"] +
                     complex_fluid_composition["CO"] * oxideMass["CO2"]/oxideMass["CO"])
 
+        # Handle if S is passed in user input composition
+        if "S" in complex_fluid_composition.keys():
+            S_value = complex_fluid_composition["S"]
+        else:
+            S_value = 0
+
         simp_S = (complex_fluid_composition["SO2"] * oxideMass["S"]/oxideMass["SO2"] +
                     complex_fluid_composition["H2S"] * oxideMass["S"]/oxideMass["H2S"] +
-                    complex_fluid_composition["S2"] * oxideMass["S"]/oxideMass["S2"])
+                    complex_fluid_composition["S2"] * oxideMass["S"]/oxideMass["S2"] +
+                    S_value)
 
         simple_fluid_unnorm = pd.Series({})
         # check which species to return for H, C, and S inventories
