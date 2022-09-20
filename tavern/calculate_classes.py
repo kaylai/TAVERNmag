@@ -289,14 +289,7 @@ class calculate_fugacities(Calculate):
     """
     def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta, gammas='calculate',
                   K_vals='calculate', opt='gekko', **kwargs):
-        # if user passing alread speciated composition, simplify it
-        required_species = {"H2O": "H2O", "CO2": "CO2", "S": "S"}
-        if set(sample.get_composition().keys()) <= set(required_species.keys()):
-            composition_molfrac = sample.get_composition(units='molfrac') 
-        else:
-            composition_molfrac = sample.get_simplified_fluid_composition(units='molfrac',
-                                                                          warnings=False)            
-
+        # Get fO2 value, gammas, and K_values
         logfO2 = fO2_buffers.calc_logfO2_from_buffer(pressure=pressure, temperature=temperature,
                                                      buffer=fO2_buffer, delta=fO2_delta)
         fO2 = 10.0**logfO2
@@ -306,15 +299,29 @@ class calculate_fugacities(Calculate):
                                                      species="all").result
 
         if K_vals == 'calculate':
-            K_vals = calculate_equilibrium_constants(temperature=temperature, species="all").result
+            K_vals = calculate_equilibrium_constants(temperature=temperature, species="all").result           
 
-        XH2Otot = composition_molfrac["H2O"]
-        XCO2tot = composition_molfrac["CO2"]
-        XStot = composition_molfrac["S"]
+        # check if user is passing a simplified composition
+        required_species = {"H2O": "H2O", "CO2": "CO2", "S": "S"}
+        if set(sample.get_composition().keys()) <= set(required_species.keys()):
+            composition_molfrac = sample.get_composition(units='molfrac') 
 
-        XHtot = XH2Otot * (0.6666)
-        XStot = XStot
-        XCtot = XCO2tot * (0.3333)
+            XH2Otot = composition_molfrac["H2O"]
+            XCO2tot = composition_molfrac["CO2"]
+            XStot = composition_molfrac["S"]
+
+            XHtot = XH2Otot * (0.6666)
+            XStot = XStot
+            XCtot = XCO2tot * (0.3333)
+        else: #user passed complex composition
+            composition_molfrac = sample.get_composition(units='molfrac')
+
+            XHtot = (composition_molfrac["H2"] + composition_molfrac["H2O"]*0.6666 +
+                     composition_molfrac["H2S"]*0.6666)
+            XStot = (composition_molfrac["S2"] + composition_molfrac["H2S"]*0.3333 +
+                     composition_molfrac["SO2"]*0.3333)
+            XCtot = (composition_molfrac["CO2"]*0.3333 + composition_molfrac["CO"]*0.5)
+
 
         #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
         # scipy optimize process
@@ -327,7 +334,7 @@ class calculate_fugacities(Calculate):
                 fH2, fS2 = p
                 return  [
                             ((fH2/(gammas['H2'] * pressure)) +
-                                ((sympy.Rational(2.0) * K_vals['H2O'] * fH2 * math.sqrt(abs(fO2))) /
+                                ((sympy.Rational(2.0) * K_vals['H2O'] * fH2 * math.sqrt(fO2)) /
                                  (sympy.Rational(3.0) * gammas['H2O'] * pressure))   +
                                 ((sympy.Rational(2.0) * K_vals['H2S'] * fH2 * math.sqrt(abs(fS2))) /
                                  (sympy.Rational(3.0) * gammas['H2S'] * pressure)) -
@@ -615,7 +622,7 @@ class calculate_speciation(Calculate):
 
         return normalized
 
-    def return_default_units(self, sample, calc_result, units='wtpercent', **kwargs):
+    def return_default_units(self, sample, calc_result, units, **kwargs):
         """ Checkes the default units set for the sample_class.MagmaticFluid
         object and returns the result of a calculation in those units.
 
@@ -636,7 +643,7 @@ class calculate_speciation(Calculate):
         default_units = sample.default_units
 
         bulk_comp = deepcopy(calc_result)
-        bulk_comp = sample_class.Sample(bulk_comp, units=units)
+        bulk_comp = sample_class.MagmaticFluid(bulk_comp, units=units)
 
         return dict(bulk_comp.get_composition(units=default_units))
 
@@ -663,12 +670,8 @@ class calculate_speciation(Calculate):
 
         # Normalize and fix O2 since fO2 is input and should not be adjusted during norm
         norm = self.normalize_fluid_FixedOxygen(X_dict, units='molfrac')
-        print("norm in molfrac")
-        print(norm)
 
         speciated_default_units = self.return_default_units(sample, norm, units='molfrac', **kwargs)
-        print("speciated in default units")
-        print(speciated_default_units)
 
         return_sample = sample_class.MagmaticFluid(speciated_default_units,
                                                    units=sample.default_units,
