@@ -305,23 +305,29 @@ class calculate_fugacities(Calculate):
         # check if user is passing a simplified composition
         required_species = {"H2O": "H2O", "CO2": "CO2", "S": "S"}
         if set(sample.get_composition().keys()) <= set(required_species.keys()):
-            composition_molfrac = sample.get_composition(units='molfrac', normalization='standard') 
+            # user has passed a simple composition
+            # composition_molfrac = sample.get_composition(units='molfrac', normalization='standard') 
 
-            XH2Otot = composition_molfrac["H2O"]
-            XCO2tot = composition_molfrac["CO2"]
-            XStot = composition_molfrac["S"]
+            # XH2Otot = composition_molfrac["H2O"]
+            # XCO2tot = composition_molfrac["CO2"]
+            # XStot = composition_molfrac["S"]
 
-            XHtot_unnorm = XH2Otot * 2
-            XStot_unnorm = XStot
-            XCtot_unnorm = XCO2tot
+            # XHtot_unnorm = XH2Otot * 2
+            # XStot_unnorm = XStot
+            # XCtot_unnorm = XCO2tot
 
-            # normalize H, S, C tots
-            HCS_tots = sample_class.MagmaticFluid({"H": XHtot_unnorm,
-                                                   "S": XStot_unnorm,
-                                                   "C": XCtot_unnorm},
-                                                   units='molfrac',
-                                                   normalization='standard')
+            # # normalize H, S, C tots
+            # HCS_tots = sample_class.MagmaticFluid({"H": XHtot_unnorm,
+            #                                        "S": XStot_unnorm,
+            #                                        "C": XCtot_unnorm},
+            #                                        units='molfrac',
+            #                                        normalization='standard')
 
+            HCS_tots = sample.get_simplified_fluid_composition(H_species="H",
+                                                               C_species="C",
+                                                               S_species="S",
+                                                               units='molfrac',
+                                                               asSampleClass=True)
             XHtot = HCS_tots.get_composition(species="H", units='molfrac')
             XStot = HCS_tots.get_composition(species="S", units='molfrac')
             XCtot = HCS_tots.get_composition(species="C", units='molfrac')
@@ -553,9 +559,6 @@ class calculate_fugacities(Calculate):
             # print out all fugacities to check they are sensible
             for k, v in return_dict.items():
                 print("f" + str(k) + ": " + str(v))
-
-        # set object's self.fugacities variable
-        sample.set_fugacities(return_dict)
 
         return return_dict
 
