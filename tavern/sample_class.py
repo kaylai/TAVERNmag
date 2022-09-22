@@ -1,3 +1,4 @@
+from email.policy import default
 import pandas as pd
 import warnings as w
 
@@ -264,13 +265,6 @@ class Sample(object):
         pandas.Series or Sample class
             The sample composition, as specified.
         """
-        # Ensure all complex fluid keys are present in sample. If not, add and give value of 0.0
-        for fluidname in core.fluid_species_names:
-            if fluidname in self.get_composition().keys():
-                pass 
-            else:
-                self.change_composition({fluidname: 0.0})
-
         # Process the oxide_masses variable, if necessary:
         oxideMass = copy(core.oxideMass)
         for ox in oxide_masses:
@@ -279,77 +273,100 @@ class Sample(object):
             else:
                 raise core.InputError("The oxide name provided in oxide_masses is not recognised.")
 
-        complex_fluid_composition = self.get_composition(units='molfrac')
-        fl_specs_not_in_comp = []
-        for fluid_spec in core.fluid_species_names:
-            if fluid_spec not in complex_fluid_composition.index:
-                fl_specs_not_in_comp.append(fluid_spec)
-        if len(fl_specs_not_in_comp):
-            w.warn("Warning: " + str(fl_specs_not_in_comp) + " not found in input composition.",
-                   RuntimeWarning, stacklevel=2)
-
-        # in case Htot is passed
-        try:
+        complex_fluid_composition = self.get_composition(units='wtpercent')
+        # check if multiple H species are passed or if H is passed as H*tot
+        XHtot = 0.0
+        if "H" in complex_fluid_composition.keys():
+            # assume H is Htot
             XHtot = complex_fluid_composition["H"]
-        except:
-            XHtot = (complex_fluid_composition["H2"] + complex_fluid_composition["H2O"]*0.6666 +
-                     complex_fluid_composition["H2S"]*0.6666)
-        # in case Stot is passed
-        try:
-            XStot = complex_fluid_composition["S"]
-        except:
-            XStot = (complex_fluid_composition["S2"] + complex_fluid_composition["H2S"]*0.3333 +
-                     complex_fluid_composition["SO2"]*0.3333)
-        # in case Ctot is passed
-        try:
+        elif ("H2" in complex_fluid_composition.keys() or
+            "H2O" in complex_fluid_composition.keys() or
+            "H2S" in complex_fluid_composition.keys()):
+            if "H2" in complex_fluid_composition.keys():
+                XHtot = complex_fluid_composition["H2"] * 2
+            if "H2O" in complex_fluid_composition.keys():
+                XHtot += (complex_fluid_composition["H2O"] *
+                        core.oxideMass["H"]/core.oxideMass["H2O"])
+            if "H2S" in complex_fluid_composition.keys():
+                XHtot += (complex_fluid_composition["H2S"] *
+                        core.oxideMass["H"]/core.oxideMass["H2S"])
+        else:
+            pass
+
+        # check if multiple C species are passed or if C is passed as C*tot
+        XCtot = 0.0
+        if "C" in complex_fluid_composition.keys():
+            #assume C is Ctot
             XCtot = complex_fluid_composition["C"]
-        except:
-            XCtot = (complex_fluid_composition["CO2"]*0.3333 + complex_fluid_composition["CO"]*0.5)
-        XOtot = (complex_fluid_composition["H2O"] * 0.3333 +
-                 complex_fluid_composition["SO2"] * 0.6666 +
-                 complex_fluid_composition["CO2"] * 0.6666 + complex_fluid_composition["CO"] * 0.5)
+        elif "CO2" in complex_fluid_composition.keys() or "CO" in complex_fluid_composition.keys():
+            if "CO2" in complex_fluid_composition.keys():
+                XCtot = complex_fluid_composition["CO2"] * core.oxideMass["C"]/core.oxideMass["CO2"]
+            if "CO" in complex_fluid_composition.keys():
+                XCtot += complex_fluid_composition["CO"] * core.oxideMass["C"]/core.oxideMass["CO"]
+        else:
+            pass
+        
+        # check if multiple S species are passed or if S is passed as S*tot
+        XStot = 0.0
+        if "S" in complex_fluid_composition.keys():
+            #assume S is Stot
+            XStot = complex_fluid_composition["S"]
+        elif ("S2" in complex_fluid_composition.keys() or
+            "SO2" in complex_fluid_composition.keys() or
+            "H2S" in complex_fluid_composition.keys()):
+            if "S2" in complex_fluid_composition.keys():
+                XStot = complex_fluid_composition["S2"] * 2
+            if "SO2" in complex_fluid_composition.keys():
+                XStot += (complex_fluid_composition["SO2"] *
+                        core.oxideMass["S"]/core.oxideMass["SO2"])
+            if "H2S" in complex_fluid_composition.keys():
+                XStot += (complex_fluid_composition["H2S"] *
+                        core.oxideMass["S"]/core.oxideMass["H2S"])
+        else:
+            pass
 
         recalcd_comp = MagmaticFluid({"S": XStot,
                                       "C": XCtot,
-                                      "H": XHtot,
-                                      "O": XOtot},
-                                      units='molfrac',
-                                      default_units='molfrac',
+                                      "H": XHtot},
+                                      units='wtpercent',
+                                      default_units='wtpercent',
                                       default_normalization='standard')
 
-        simple_fluid_molfrac = pd.Series({})
+        simple_fluid_wtper = pd.Series({})
         # check which species to return for H, C, and S inventories
-        if H_species == "H2O":
-            simple_fluid_molfrac["H2O"] = recalcd_comp.get_composition(species="H") * 0.5 
-        elif H_species == "H2":
-            simple_fluid_molfrac["H2"] = recalcd_comp.get_composition(species="H") * 0.5
-        elif H_species == "H":
-            simple_fluid_molfrac["H"] = recalcd_comp.get_composition(species="H")
-        else:
+        H_names = ["H2O", "H2"]
+        for h in H_names:
+            if H_species == h:
+                simple_fluid_wtper[h] = (recalcd_comp.get_composition(species="H") *
+                                           core.oxideMass[h]/core.oxideMass["H"])
+        if H_species == "H":
+            simple_fluid_wtper["H"] = recalcd_comp.get_composition(species="H")
+        elif H_species not in H_names:
             raise core.InputError("H_species must be one of 'H2O', 'H2', or 'H'.")
 
-        if C_species == "CO2":
-            simple_fluid_molfrac["CO2"] = recalcd_comp.get_composition(species="C") 
-        elif C_species == "CO":
-            simple_fluid_molfrac["CO"] = recalcd_comp.get_composition(species="C")
-        elif C_species == "C":
-            simple_fluid_molfrac["C"] = recalcd_comp.get_composition(species="C")
-        else:
-            raise core.InputError("C_species must be one of 'CO2' or 'CO'.")
+        C_names = ["CO2", "CO"]
+        for c in C_names:
+            if C_species == c:
+                simple_fluid_wtper[c] = (recalcd_comp.get_composition(species="C") *
+                                           core.oxideMass[c]/core.oxideMass["C"])
+        if C_species == "C":
+            simple_fluid_wtper["C"] = recalcd_comp.get_composition(species="C")
+        elif C_species not in C_names:
+            raise core.InputError("C_species must be one of 'C', 'CO2', or 'CO'.")
 
+        S_names = ["S2", "SO2", "H2S"]
+        for s in S_names:
+            if S_species == s:
+                simple_fluid_wtper[s] = (recalcd_comp.get_composition(species="S") *
+                                           core.oxideMass[s]/core.oxideMass["S"])
         if S_species == "S":
-            simple_fluid_molfrac["S"] = recalcd_comp.get_composition(species="S") 
-        elif S_species == "SO2":
-            simple_fluid_molfrac["SO2"] = recalcd_comp.get_composition(species="S")
-        elif S_species == "H2S":
-            simple_fluid_molfrac["H2S"] = recalcd_comp.get_composition(species="S")
-        elif S_species == "S2":
-            simple_fluid_molfrac["S2"] = recalcd_comp.get_composition(species="S") * 0.5
-        else:
+            simple_fluid_wtper["S"] = recalcd_comp.get_composition(species="S")
+        elif S_species not in S_names:
             raise core.InputError("S_species must be one of 'S', 'SO2', 'H2S', or 'S2'.")
         
-        simple_fluid_composition = MagmaticFluid(simple_fluid_molfrac, units='molfrac',
-                                                 normalization='standard')
+        simple_fluid_composition = MagmaticFluid(simple_fluid_wtper, units='wtpercent',
+                                                 normalization='standard',
+                                                 default_normalization='standard')
 
         # if no units passed, get default
         if units == None:
@@ -367,7 +384,7 @@ class Sample(object):
                                   "or 'molfrac'.")
 
         if asSampleClass is True:
-            return MagmaticFluid(converted)
+            return MagmaticFluid(converted, units='wtpercent')
         else:
             return converted
 
@@ -820,24 +837,6 @@ class MagmaticFluid(Sample):
         self.default_normalization = default_normalization
         self.default_units = default_units
         self.sample_type = 'MagmaticFluid'
-
-    def set_fugacities(self, fugacities):
-        """Sets self.fugacities value for MagmaticFluid object so that they can be retrieved using
-        the get_fugacities() method.
-
-        Parameters
-        ----------
-        fugacities: dict
-            Fugacities of all species.
-
-        Returns
-        -------
-        Pass - sets self.fugacities as dict
-        """
-        self.fugacities = fugacities 
-
-        pass
-
 
 class SilicateMelt(Sample):
     """ A silicate melt major oxide composition. A melt must have the following properties:
