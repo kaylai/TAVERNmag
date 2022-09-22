@@ -1,6 +1,7 @@
 from email.policy import default
 import pandas as pd
 import warnings as w
+import numpy as np
 
 from tavern import core
 
@@ -209,6 +210,10 @@ class Sample(object):
             final = converted
         elif normalization == 'standard':
             final = self._normalize_Standard(converted, units=units)
+        elif normalization == 'fixedvolatiles':
+            final = self._normalize_FixedVolatiles(converted, units=units)
+        elif normalization == 'additionalvolatiles':
+            final = self._normalize_AdditionalVolatiles(converted, units=units)
         else:
             raise core.InputError("The normalization method must be one of 'none', 'standard', "
                                   "'fixedvolatiles', or 'additionalvolatiles'.")
@@ -634,7 +639,7 @@ class Sample(object):
 
     def _normalize_AdditionalVolatiles(self, composition, units='wtpercent'):
         """
-        Normalises major element oxide wt% to 100%, assuming it is volatile-free. If H2O or CO2
+        Normalises major element oxide wt% to 100%, assuming it is volatile-free. If H2O, CO2, or S
         are passed to the function, their un-normalized values will be retained in addition to the
         normalized non-volatile oxides, summing to >100%.
 
@@ -880,9 +885,10 @@ class SilicateMelt(Sample):
             raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
                                   "'molfrac'.")
 
-        if default_normalization not in ['none', 'standard']:
-            raise core.InputError("For a MagmaticFluid object, normalization can be one of "
-                                  "'none' or 'standard'.")
+        if default_normalization not in ['none', 'standard', 'additionalvolatiles',
+                                         'fixedvolatiles']:
+            raise core.InputError("For a SilicateMelt object, normalization can be one of "
+                                  "'none', 'standard', 'additionalvolatiles', or 'fixedvolatiles'.")
 
         if default_units not in ['wtpercent', 'molpercent', 'molfrac']:
             raise core.InputError("Units must be one of 'wtpercent', 'molpercent', or "
