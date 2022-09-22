@@ -274,30 +274,25 @@ class Sample(object):
                 raise core.InputError("The oxide name provided in oxide_masses is not recognised.")
 
         complex_fluid_composition = self.get_composition(units='wtpercent')
-
-        # First, check if fluid is fully speciated
-        if set(complex_fluid_composition.get_composition().keys()) <= set(core.fluid_species_names):
-            # sample is fully speciated
-
         # check if multiple H species are passed or if H is passed as H*tot
         XHtot = 0.0
         if "H" in complex_fluid_composition.keys():
             # assume H is Htot
             XHtot = complex_fluid_composition["H"]
         elif ("H2" in complex_fluid_composition.keys() or
-              "H2O" in complex_fluid_composition.keys() or
-              "H2S" in complex_fluid_composition.keys()):
+            "H2O" in complex_fluid_composition.keys() or
+            "H2S" in complex_fluid_composition.keys()):
             if "H2" in complex_fluid_composition.keys():
                 XHtot = complex_fluid_composition["H2"] * 2
             if "H2O" in complex_fluid_composition.keys():
                 XHtot += (complex_fluid_composition["H2O"] *
-                          core.oxideMass["H"]/core.oxideMass["H2O"])
+                        core.oxideMass["H"]/core.oxideMass["H2O"])
             if "H2S" in complex_fluid_composition.keys():
                 XHtot += (complex_fluid_composition["H2S"] *
-                          core.oxideMass["H"]/core.oxideMass["H2S"])
+                        core.oxideMass["H"]/core.oxideMass["H2S"])
         else:
             pass
-       
+
         # check if multiple C species are passed or if C is passed as C*tot
         XCtot = 0.0
         if "C" in complex_fluid_composition.keys():
@@ -317,16 +312,16 @@ class Sample(object):
             #assume S is Stot
             XStot = complex_fluid_composition["S"]
         elif ("S2" in complex_fluid_composition.keys() or
-              "SO2" in complex_fluid_composition.keys() or
-              "H2S" in complex_fluid_composition.keys()):
+            "SO2" in complex_fluid_composition.keys() or
+            "H2S" in complex_fluid_composition.keys()):
             if "S2" in complex_fluid_composition.keys():
                 XStot = complex_fluid_composition["S2"] * 2
             if "SO2" in complex_fluid_composition.keys():
                 XStot += (complex_fluid_composition["SO2"] *
-                          core.oxideMass["S"]/core.oxideMass["SO2"])
+                        core.oxideMass["S"]/core.oxideMass["SO2"])
             if "H2S" in complex_fluid_composition.keys():
                 XStot += (complex_fluid_composition["H2S"] *
-                          core.oxideMass["S"]/core.oxideMass["H2S"])
+                        core.oxideMass["S"]/core.oxideMass["H2S"])
         else:
             pass
 
@@ -334,6 +329,7 @@ class Sample(object):
                                       "C": XCtot,
                                       "H": XHtot},
                                       units='wtpercent',
+                                      default_units='wtpercent',
                                       default_normalization='standard')
 
         simple_fluid_wtper = pd.Series({})

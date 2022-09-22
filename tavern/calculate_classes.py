@@ -306,41 +306,35 @@ class calculate_fugacities(Calculate):
         required_species = {"H2O": "H2O", "CO2": "CO2", "S": "S"}
         if set(sample.get_composition().keys()) <= set(required_species.keys()):
             # user has passed a simple composition
-            # composition_molfrac = sample.get_composition(units='molfrac', normalization='standard') 
+            composition_molfrac = sample.get_composition(units='molfrac', normalization='standard') 
 
-            # XH2Otot = composition_molfrac["H2O"]
-            # XCO2tot = composition_molfrac["CO2"]
-            # XStot = composition_molfrac["S"]
-
-            # XHtot_unnorm = XH2Otot * 2
-            # XStot_unnorm = XStot
-            # XCtot_unnorm = XCO2tot
-
-            # # normalize H, S, C tots
-            # HCS_tots = sample_class.MagmaticFluid({"H": XHtot_unnorm,
-            #                                        "S": XStot_unnorm,
-            #                                        "C": XCtot_unnorm},
-            #                                        units='molfrac',
-            #                                        normalization='standard')
-
-            HCS_tots = sample.get_simplified_fluid_composition(H_species="H",
-                                                               C_species="C",
-                                                               S_species="S",
-                                                               units='molfrac',
-                                                               asSampleClass=True)
-            XHtot = HCS_tots.get_composition(species="H", units='molfrac')
-            XStot = HCS_tots.get_composition(species="S", units='molfrac')
-            XCtot = HCS_tots.get_composition(species="C", units='molfrac')
-
-        else: #user passed complex composition
-            composition_molfrac = sample.get_simplified_fluid_composition(units='molfrac',
-                                                                          H_species='H',
-                                                                          C_species='C',
-                                                                          S_species='S')
-
-            XHtot = composition_molfrac["H"]
+            XH2Otot = composition_molfrac["H2O"]
+            XCO2tot = composition_molfrac["CO2"]
             XStot = composition_molfrac["S"]
-            XCtot = composition_molfrac["C"]
+
+            XHtot = XH2Otot * 2
+            XStot = XStot
+            XCtot = XCO2tot
+        
+        elif set(sample.get_composition().keys()) <= set(core.fluid_species_names):
+            # user passed complex composition
+            composition_molfrac = sample.get_composition(units='molfrac')
+
+            # first get H, S, C tots
+            XHtot = (composition_molfrac["H2"] + composition_molfrac["H2O"]*0.6666 +
+                    composition_molfrac["H2S"]*0.6666)
+            XStot = (composition_molfrac["S2"] + composition_molfrac["H2S"]*0.3333 +
+                    composition_molfrac["SO2"]*0.3333)
+            XCtot = (composition_molfrac["CO2"]*0.3333 + composition_molfrac["CO"]*0.5)
+            XOtot = (composition_molfrac["H2O"] * 0.3333 + composition_molfrac["SO2"] * 0.6666 +
+                    composition_molfrac["CO2"] * 0.6666 + composition_molfrac["CO"] * 0.5)
+
+        else: # user passed non-standard simlpified composition
+            composition_molfrac = sample.get_simplified_fluid_composition(units='molfrac')
+
+            XHtot = composition_molfrac["H2O"] * 2
+            XStot = composition_molfrac["S"]
+            XCtot = composition_molfrac["CO2"]
 
         #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
         # scipy optimize process
