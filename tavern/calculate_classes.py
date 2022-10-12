@@ -156,12 +156,12 @@ class calculate_fugacity_coefficients(Calculate):
 
         gamma_dict = {}
 
-        for species in core.fluid_species_names:
+        for spec in core.fluid_species_names:
             #Calculate a and b parameters (depend only on critical parameters)...
-            a = (0.42748 * R**2.0 * core.critical_params[species]["cT"]**(2.5) / 
-                 (core.critical_params[species]["cP"] * 10.0**5))
-            b = (0.08664 * R * core.critical_params[species]["cT"] / 
-                 (core.critical_params[species]["cP"] * 10.0**5))
+            a = (0.42748 * R**2.0 * core.critical_params[spec]["cT"]**(2.5) / 
+                 (core.critical_params[spec]["cP"] * 10.0**5))
+            b = (0.08664 * R * core.critical_params[spec]["cT"] / 
+                 (core.critical_params[spec]["cP"] * 10.0**5))
             kappa = 0.0
 
             #Calculate coefficients in the cubic equation of state...
@@ -227,26 +227,11 @@ class calculate_fugacity_coefficients(Calculate):
             Hdep = R * tempK * (Z0 - 1.0 - 1.5*A*math.log(1.0+B/Z0)/B)
             Sdep = R * (math.log(Z0-B) - 0.5*A*math.log(1.0+B/Z0)/B)
 
-            gamma_dict[species] = gamma
+            gamma_dict[spec] = gamma
 
             #gamma_tuple = tuple(gamma_dict.values())
-
-        if species == 'CO':
-            return gamma_dict["CO"]
-        if species == 'CO2':
-            return gamma_dict["CO2"]
-        if species == 'H2':
-            return gamma_dict["H2"]
-        if species == 'H2O':
-            return gamma_dict["H2O"]
-        if species == 'H2S':
-            return gamma_dict["H2S"]
-        if species == 'O2':
-            return gamma_dict["O2"]
-        if species == 'S2':
-            return gamma_dict["S2"]
-        if species == 'SO2':
-            return gamma_dict
+        if species in core.fluid_species_names:
+            return gamma_dict[species]
         if species == 'all':
             return gamma_dict
 
@@ -663,7 +648,6 @@ class calculate_speciation(Calculate):
         if gammas == 'calculate':
             gammas = calculate_fugacity_coefficients(temperature=temperature, pressure=pressure,
                                                      species="all").result
-
         if K_vals == 'calculate':
             K_vals = calculate_equilibrium_constants(temperature=temperature, species="all").result
 
@@ -672,7 +656,6 @@ class calculate_speciation(Calculate):
                                               temperature=temperature, fO2_buffer=fO2_buffer,
                                               fO2_delta=fO2_delta, gammas=gammas,
                                               K_vals=K_vals, **kwargs).result
-
         X_dict = {}
         for species in core.fluid_species_names:
             X = fugacities[species] / (gammas[species] * pressure)
