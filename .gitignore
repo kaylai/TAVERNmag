@@ -140,3 +140,19 @@ Testing.ipynb
 import tavern as tv.py
 
 Augustine_TAVERN_test.ipynb
+
+jupyter_notebooks/as_gas_molper.svg
+
+jupyter_notebooks/as_gas_wtper.svg
+
+jupyter_notebooks/diss_mol_no_smelting_plausible.svg
+
+jupyter_notebooks/diss_molper_nosmelt.svg
+
+jupyter_notebooks/diss_no_smelting_plausible.svg
+
+jupyter_notebooks/diss_with_smelting_plausible.svg
+
+jupyter_notebooks/diss_wtper_nosmelt.svg
+
+jupyter_notebooks/diss_wtper_smelt.svg
