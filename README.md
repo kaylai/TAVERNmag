@@ -20,4 +20,4 @@ The jupyter notebook file for running thermodynamic gas calculations from this w
 
 The version of this code used for calculations in this work is archived at zenodo:
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6812119.svg)](https://doi.org/10.5281/zenodo.6812119)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7195733.svg)](https://doi.org/10.5281/zenodo.7195733)
