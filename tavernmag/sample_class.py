@@ -1,9 +1,8 @@
-from email.policy import default
 import pandas as pd
 import warnings as w
 import numpy as np
 
-from tavern import core
+from tavernmag import core
 
 from copy import deepcopy, copy
 
@@ -143,9 +142,9 @@ class Sample(object):
             options. In this case any normalization instructions will be ignored.
 
         oxide_masses:  dict
-            Specify here any oxide masses that should be changed from the tavern default. This
+            Specify here any oxide masses that should be changed from the tavernmag default. This
             might be useful for recreating other implementations of models that use slightly
-            different molecular masses. The default values in tavern are given to 3 dp.
+            different molecular masses. The default values in tavernmag are given to 3 dp.
 
         Returns
         -------
@@ -261,9 +260,9 @@ class Sample(object):
             options. In this case any normalization instructions will be ignored.
 
         oxide_masses:  dict
-            Specify here any oxide masses that should be changed from the tavern default. This
+            Specify here any oxide masses that should be changed from the tavernmag default. This
             might be useful for recreating other implementations of models that use slightly
-            different molecular masses. The default values in tavern are given to 3 dp.
+            different molecular masses. The default values in tavernmag are given to 3 dp.
 
         Returns
         -------
@@ -928,9 +927,9 @@ class SilicateMelt(Sample):
             options. In this case any normalization instructions will be ignored.
 
         oxide_masses:  dict
-            Specify here any oxide masses that should be changed from the tavern default. This
+            Specify here any oxide masses that should be changed from the tavernmag default. This
             might be useful for recreating other implementations of models that use slightly
-            different molecular masses. The default values in tavern are given to 3 dp.
+            different molecular masses. The default values in tavernmag are given to 3 dp.
 
         Returns
         -------

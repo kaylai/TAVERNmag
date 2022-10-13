@@ -1,4 +1,4 @@
-from tavern import core, fO2_buffers, sample_class, calculate_classes
+from tavernmag import core, fO2_buffers, sample_class, calculate_classes
 
 import sympy
 import math
@@ -161,7 +161,7 @@ class Model(object):
         Returns
         -------
         MagmaticFluid object
-            TAVERN MagmaticFluid object with composition of equilibrium fluid as: CO, CO2, H2, H2O,
+            tavernmag MagmaticFluid object with composition of equilibrium fluid as: CO, CO2, H2, H2O,
             H2S, O2, S2, and SO2. 
         """
 

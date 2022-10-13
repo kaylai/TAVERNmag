@@ -128,3 +128,15 @@ _Model Testing/.DS_Store
 .DS_Store
 
 tavern/sums/sums_6_100_1.p
+
+sums/
+
+tavernmag/import tavern as tv.py
+
+tavern_orig.py
+
+Testing.ipynb
+
+import tavern as tv.py
+
+Augustine_TAVERN_test.ipynb

@@ -5,7 +5,7 @@ import numpy as np
 from scipy.optimize import fsolve
 import warnings as w
 
-from tavern import core, fO2_buffers, sample_class, sums
+from tavernmag import core, fO2_buffers, sample_class, sums
 
 from copy import deepcopy, copy
 
@@ -20,7 +20,7 @@ class Calculate(object):
         Parameters
         ----------
         sample: MagmaticFluid or SilicateMelt class
-            The composition of a magmatic fluid or silicate melt as a tavern class.
+            The composition of a magmatic fluid or silicate melt as a tavernmag class.
         """
         self.result = self.calculate(**kwargs)
 
@@ -265,7 +265,9 @@ class calculate_fugacities(Calculate):
     opt: str
         Optional. Default value is 'gekko' in which case the GEKKO library will be used for
         optimization of fS2 and fH2. Other options are 'leastsq' (scipy.optimize.leastsq) and
-        'least_squares' (scipy.optimize.least_squares).
+        'least_squares' (scipy.optimize.least_squares). If the GEKKO method fails to converge on
+        a solution or hits the maximum iteration number of 250, an internal exception will be
+        thrown and the 'leastsq' method will be attempted instead.
 
     Returns
     -------
@@ -434,7 +436,10 @@ class calculate_fugacities(Calculate):
             fH2, fS2 = optimize_leastsq(gammas, K_vals, pressure, XHtot, XStot, fO2)
         
         if opt == 'gekko':
-            fH2, fS2 = optimize_gekko(gammas, K_vals, pressure, XHtot, XStot, fO2)
+            try:
+                fH2, fS2 = optimize_gekko(gammas, K_vals, pressure, XHtot, XStot, fO2)
+            except:
+                fH2, fS2 = optimize_leastsq(gammas, K_vals, pressure, XHtot, XStot, fO2)
         
         if opt == 'least_squares':
             fH2, fS2 = optimize_least_squares(gammas, K_vals, pressure, XHtot, XStot, fO2)
@@ -664,11 +669,7 @@ class calculate_speciation(Calculate):
         # Normalize and fix O2 since fO2 is input and should not be adjusted during norm
         norm = self.normalize_fluid_FixedOxygen(X_dict, units='molfrac')
 
-        speciated_default_units = self.return_default_units(sample, norm, units='molfrac', **kwargs)
-
-        return_sample = sample_class.MagmaticFluid(speciated_default_units,
-                                                   units=sample.default_units,
-                                                   default_units=sample.default_units)
+        return_sample = self.return_default_units(sample, norm, units='molfrac', **kwargs)
 
         return return_sample
 

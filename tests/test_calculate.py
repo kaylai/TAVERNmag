@@ -1,6 +1,6 @@
 import unittest
 import math
-import tavern as tv
+import tavernmag as tv
 import pandas as pd
 
 class TestEquilibriumConstants(unittest.TestCase):
@@ -77,19 +77,19 @@ class TestFugacities(unittest.TestCase):
 
         # parameters for the calculation
         self.pressure = 1000.0
-        self.temperature = 1000.0
+        self.temperature = 926.0
         self.fO2_buffer = 'QFM'
         self.fO2_delta = 1
 
         # fugacities calculated with TAVERN rounded to 4 dp
-        self.fugacities_known = {'CO':  1.8015,
-                                 'CO2': 237.1919,
-                                 'H2':  2.2297,
-                                 'H2O': 432.4545,
-                                 'H2S': 209.3452,
-                                 'O2':  1.2863e-10,
-                                 'S2':  46.8002,
-                                 'SO2': 86.7186}
+        self.fugacities_known = {'CO':  4.26919,
+                                 'CO2': 713.5232351,
+                                 'H2':  7.29685,
+                                 'H2O': 1423.6482,
+                                 'H2S': 400.9292817,
+                                 'O2':  7.91101e-12,
+                                 'S2':  4.97656,
+                                 'SO2': 14.22078616}
 
     def test_calculate_fugacities_wtpercent(self):
         calcd_result = tv.calculate_fugacities(sample=self.sample, pressure=self.pressure,
@@ -98,7 +98,7 @@ class TestFugacities(unittest.TestCase):
                                                fO2_delta=self.fO2_delta).result
         known_result = self.fugacities_known
         for k in calcd_result.keys():
-            self.assertAlmostEqual(calcd_result[k], known_result[k], places=4)
+            self.assertAlmostEqual(calcd_result[k], known_result[k], places=3)
 
     def test_calculate_fugacities_unitsMolPercent(self):
         calcd_result = tv.calculate_fugacities(sample=self.sample_unitsMolPercent, 
@@ -108,7 +108,7 @@ class TestFugacities(unittest.TestCase):
                                                fO2_delta=self.fO2_delta).result
         known_result = self.fugacities_known
         for k in calcd_result.keys():
-            self.assertAlmostEqual(calcd_result[k], known_result[k], places=4)
+            self.assertAlmostEqual(calcd_result[k], known_result[k], places=3)
 
     def test_calculate_fugacities_unitsMolFrac(self):
         calcd_result = tv.calculate_fugacities(sample=self.sample_unitsMolFrac, 

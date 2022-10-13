@@ -1,5 +1,5 @@
 import unittest
-import tavern as tv
+import tavernmag as tv
 import numpy as np
 import pandas as pd
 

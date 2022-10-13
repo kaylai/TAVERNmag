@@ -1,52 +1,52 @@
 """
-TAVERN
+TAVERNmag
 
 A thermodynamic model code for magmatic volatiles.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Kayla Iacovino"
 
 # -------------------- IMPORTS -------------------- #
-import tavern.core
-import tavern.calculate_classes
-import tavern.fO2_buffers
-import tavern.sample_class
-import tavern.model
+import tavernmag.core
+import tavernmag.calculate_classes
+import tavernmag.fO2_buffers
+import tavernmag.sample_class
+import tavernmag.model
 
 import pandas as pd
 
 from copy import deepcopy, copy
 
 # ------------ CALCULATION DEFINITIONS ------------ #
-class calculate_fugacities(tavern.calculate_classes.calculate_fugacities):
+class calculate_fugacities(tavernmag.calculate_classes.calculate_fugacities):
 	pass
 
 
-class calculate_speciation(tavern.calculate_classes.calculate_speciation):
+class calculate_speciation(tavernmag.calculate_classes.calculate_speciation):
 	pass
 
 
-class calculate_fugacity_coefficients(tavern.calculate_classes.calculate_fugacity_coefficients):
+class calculate_fugacity_coefficients(tavernmag.calculate_classes.calculate_fugacity_coefficients):
 	pass
 
 
-class calculate_equilibrium_constants(tavern.calculate_classes.calculate_equilibrium_constants):
+class calculate_equilibrium_constants(tavernmag.calculate_classes.calculate_equilibrium_constants):
 	pass
 
 
-class calculate_degassed_fluid_composition(tavern.calculate_classes.calculate_degassed_fluid_composition):
+class calculate_degassed_fluid_composition(tavernmag.calculate_classes.calculate_degassed_fluid_composition):
     pass
 
 
-class calculate_fH2O_from_melt(tavern.calculate_classes.calculate_fH2O_from_melt):
+class calculate_fH2O_from_melt(tavernmag.calculate_classes.calculate_fH2O_from_melt):
     pass
 
-class match(tavern.calculate_classes.match):
+class match(tavernmag.calculate_classes.match):
     pass
 
 # ------------ MODEL CLASS DEFINITIONS ------------ #
-class Model(tavern.model.Model):
+class Model(tavernmag.model.Model):
     pass
 
 # ------------ SAMPLE CLASS DEFINITIONS ------------ #
