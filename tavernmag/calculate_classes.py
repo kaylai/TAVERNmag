@@ -5,7 +5,7 @@ import numpy as np
 from scipy.optimize import fsolve
 import warnings as w
 
-from tavernmag import core, fO2_buffers, sample_class, sums
+from tavernmag import core, fO2_buffers, sample_class
 
 from copy import deepcopy, copy
 
