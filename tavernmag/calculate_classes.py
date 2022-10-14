@@ -1,11 +1,9 @@
 from abc import abstractmethod
 import math
-import sympy
 import numpy as np
-from scipy.optimize import fsolve
 import warnings as w
 
-from tavernmag import core, fO2_buffers, sample_class
+from tavernmag import core, fO2_buffers, fugacity_equations, sample_class
 
 from copy import deepcopy, copy
 
@@ -275,25 +273,35 @@ class calculate_fugacities(Calculate):
         Calculate object. Access results by fetching the result property. Fugacities of all species.
 
     """
-    def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta, gammas='calculate',
-                  K_vals='calculate', opt='gekko', **kwargs):
+    def _calc_thermo_params(self, **kwargs):
         # Get fO2 value, gammas, and K_values
-        logfO2 = fO2_buffers.calc_logfO2_from_buffer(pressure=pressure, temperature=temperature,
-                                                     buffer=fO2_buffer, delta=fO2_delta)
+        logfO2 = fO2_buffers.calc_logfO2_from_buffer(pressure=self.pressure,
+                                                     temperature=self.temperature,
+                                                     buffer=self.fO2_buffer, delta=self.fO2_delta)
         fO2 = 10.0**logfO2
 
-        if gammas == 'calculate':
-            gammas = calculate_fugacity_coefficients(temperature=temperature, pressure=pressure,
-                                                     species="all").result
+        if self.gammas == 'calculate':
+            gammas_calcd = calculate_fugacity_coefficients(temperature=self.temperature,
+                                                           pressure=self.pressure,
+                                                           species="all").result
+        else:
+            gammas_calcd = self.gammas
 
-        if K_vals == 'calculate':
-            K_vals = calculate_equilibrium_constants(temperature=temperature, species="all").result           
+        if self.K_vals == 'calculate':
+            K_vals_calcd = calculate_equilibrium_constants(temperature=self.temperature,
+                                                           species="all").result
+        else:
+            K_vals_calcd = self.K_vals
+        
+        return fO2, gammas_calcd, K_vals_calcd
 
-        # check if user is passing a simplified composition
+    def _calc_XHSCtot(self, **kwargs):
+         # check if user is passing a simplified composition
         required_species = {"H2O": "H2O", "CO2": "CO2", "S": "S"}
-        if set(sample.get_composition().keys()) <= set(required_species.keys()):
+        if set(self.sample.get_composition().keys()) <= set(required_species.keys()):
             # user has passed a simple composition
-            composition_molfrac = sample.get_composition(units='molfrac', normalization='standard') 
+            composition_molfrac = self.sample.get_composition(units='molfrac',
+                                                              normalization='standard') 
 
             XH2Otot = composition_molfrac["H2O"]
             XCO2tot = composition_molfrac["CO2"]
@@ -303,9 +311,9 @@ class calculate_fugacities(Calculate):
             XStot = XStot
             XCtot = XCO2tot
         
-        elif set(sample.get_composition().keys()) <= set(core.fluid_species_names):
+        elif set(self.sample.get_composition().keys()) <= set(core.fluid_species_names):
             # user passed complex composition
-            composition_molfrac = sample.get_composition(units='molfrac')
+            composition_molfrac = self.sample.get_composition(units='molfrac')
 
             # first get H, S, C tots
             XHtot = (composition_molfrac["H2"] + composition_molfrac["H2O"]*0.6666 +
@@ -317,182 +325,23 @@ class calculate_fugacities(Calculate):
                     composition_molfrac["CO2"] * 0.6666 + composition_molfrac["CO"] * 0.5)
 
         else: # user passed non-standard simlpified composition
-            composition_molfrac = sample.get_simplified_fluid_composition(units='molfrac')
+            composition_molfrac = self.sample.get_simplified_fluid_composition(units='molfrac')
 
             XHtot = composition_molfrac["H2O"] * 2
             XStot = composition_molfrac["S"]
             XCtot = composition_molfrac["CO2"]
-
-        #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
-        # scipy optimize process
-        def optimize_leastsq(gammas, K_vals, pressure, XHtot, XStot, fO2):
-            if XStot == 0:
-                fS2 = 0
-            if XHtot == 0:
-                fH2 = 0
-            def equations(p):
-                fH2, fS2 = p
-                return  [
-                            ((fH2/(gammas['H2'] * pressure)) +
-                                ((sympy.Rational(2.0) * K_vals['H2O'] * fH2 * math.sqrt(fO2)) /
-                                 (sympy.Rational(3.0) * gammas['H2O'] * pressure))   +
-                                ((sympy.Rational(2.0) * K_vals['H2S'] * fH2 * math.sqrt(abs(fS2))) /
-                                 (sympy.Rational(3.0) * gammas['H2S'] * pressure)) -
-                                XHtot), 
-                            ((fS2/(gammas['S2'] * pressure)) +
-                                ((K_vals['H2S'] * fH2 * math.sqrt(abs(fS2))) /
-                                 (sympy.Rational(3.0) * gammas['H2S'] * pressure)) + 
-                                ((K_vals['SO2'] * fO2 * math.sqrt(abs(fS2))) /
-                                 (sympy.Rational(3.0) * gammas['SO2'] * pressure)) -
-                                XStot)
-                        ]
-
-            # fH2_a, fS2_a = fsolve(equations, (1, 0))
-            # leastsq outperforms fsolve, particularly at low fO2 conditions
-            # where H2 and S2 (co-solved for above) are abundant
-            from scipy.optimize import leastsq 
-            fH2_a, fS2_a = leastsq(equations, (0,0))[0]
-
-            if XHtot == 0:
-                fH2 = 0
-            else:
-                fH2 = abs(fH2_a)
-
-            if XStot  == 0:
-                fS2 = 0
-            else:
-                fS2 = abs(fS2_a)
-            
-            return fH2, fS2
-
-        # gekko non-linear eq solver
-        from gekko import GEKKO
-        def optimize_gekko(gammas, K_vals, pressure, XHtot, XStot, fO2):
-            m = GEKKO() # create GEKKO model
-            fH2 = m.Var(value=0) # define new variable, initial value=0
-            fS2 = m.Var(value=0) # define new variable, initial value=0
-            fH2.lower = 0 # set lower bound to 0
-            fS2.lower = 0 # set lower bound to 0
-            m.Equations([
-                                ((fH2/(gammas['H2'] * pressure)) +
-                                    ((sympy.Rational(2.0) * K_vals['H2O'] * fH2 * m.sqrt(fO2)) /
-                                     (sympy.Rational(3.0) * gammas['H2O'] * pressure))   +
-                                    ((sympy.Rational(2.0) * K_vals['H2S'] * fH2 * m.sqrt(fS2)) /
-                                     (sympy.Rational(3.0) * gammas['H2S'] * pressure)) -
-                                    XHtot==0), 
-                                ((fS2/(gammas['S2'] * pressure)) +
-                                    ((K_vals['H2S'] * fH2 * m.sqrt(fS2)) /
-                                     (sympy.Rational(3.0) * gammas['H2S'] * pressure)) + 
-                                    ((K_vals['SO2'] * fO2 * m.sqrt(fS2)) /
-                                     (sympy.Rational(3.0) * gammas['SO2'] * pressure)) -
-                                    XStot==0)
-                            ])
-            m.solve(disp=False)
-            
-            return fH2.value[0], fS2.value[0]
-
-        # scipy optimize least_squares
-        def optimize_least_squares(gammas, K_vals, pressure, XHtot, XStot, fO2):
-            if XStot == 0:
-                fS2 = 0
-            if XHtot == 0:
-                fH2 = 0
-            def equations(p):
-                vals = np.zeros(p.size)
-                vals[0] = ((p[0]/(gammas['H2'] * pressure)) +
-                                ((sympy.Rational(2.0) * K_vals['H2O'] * p[0] * math.sqrt(fO2)) /
-                                 (sympy.Rational(3.0) * gammas['H2O'] * pressure))   +
-                                ((sympy.Rational(2.0) * K_vals['H2S'] * p[0] * math.sqrt(p[1])) /
-                                 (sympy.Rational(3.0) * gammas['H2S'] * pressure)) -
-                                XHtot)
-                vals[1] = ((p[1]/(gammas['S2'] * pressure)) +
-                                ((K_vals['H2S'] * p[0] * math.sqrt(p[1])) /
-                                 (sympy.Rational(3.0) * gammas['H2S'] * pressure)) + 
-                                ((K_vals['SO2'] * fO2 * math.sqrt(p[1])) /
-                                 (sympy.Rational(3.0) * gammas['SO2'] * pressure)) -
-                                XStot)
-                return vals
-
-            # fH2_a, fS2_a = fsolve(equations, (1, 0))
-            # leastsq outperforms fsolve, particularly at low fO2 conditions
-            # where H2 and S2 (co-solved for above) are abundant
-            from scipy.optimize import least_squares 
-            fH2_a, fS2_a = least_squares(equations, (0,0), bounds=([0,0],np.inf)).x
-
-            if XHtot == 0:
-                fH2 = 0
-            else:
-                fH2 = fH2_a
-
-            if XStot  == 0:
-                fS2 = 0
-            else:
-                fS2 = fS2_a
-            
-            return fH2, fS2
-
-        # choose optimization routine based on user input
-        if opt == 'leastsq':
-            fH2, fS2 = optimize_leastsq(gammas, K_vals, pressure, XHtot, XStot, fO2)
         
-        if opt == 'gekko':
-            try:
-                fH2, fS2 = optimize_gekko(gammas, K_vals, pressure, XHtot, XStot, fO2)
-            except:
-                fH2, fS2 = optimize_leastsq(gammas, K_vals, pressure, XHtot, XStot, fO2)
-        
-        if opt == 'least_squares':
-            fH2, fS2 = optimize_least_squares(gammas, K_vals, pressure, XHtot, XStot, fO2)
-        # end optimization options
-
-        if XHtot == 0:
-            fH2 = 0
-        else:
-            fH2 = abs(fH2)
-
-        if XStot  == 0:
-            fS2 = 0
-        else:
-            fS2 = abs(fS2)
-
-        # SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
-        if XCtot  == 0:
-            fCO = 0
-        else:
-            fCO = sympy.symbols('fCO') #for sympy
-
-            equation = (((K_vals['CO2'] * fCO * math.sqrt(fO2)) /
-                        (sympy.Rational(3.0) * gammas['CO2'] * pressure)) +
-                        ((fCO)/(sympy.Rational(2.0) * gammas['CO'] * pressure))  -
-                        XCtot)
-            fCO = sympy.solve(equation, fCO)[0] #newly implemented sympy way
-
-        # THIRD calculate fCO2 using calc'd fCO and known fO2 value
-        fCO2 = K_vals['CO2'] * fCO * math.sqrt(fO2)
-
-        # FOURTH calcualte fSO2 using calc'd fS2 and known fO2 value
-        fSO2 = K_vals['SO2'] * math.sqrt(fS2) * fO2
-
-        # FIFTH calculate fH2S using calc'd fH2 and fS2 values
-        fH2S = K_vals['H2S'] * fH2 * math.sqrt(fS2)
-
-        # SIXTH calculate fH2O using calc'd fH2 and knwn fO2 value
-        fH2O = K_vals['H2O'] * math.sqrt(fO2) * fH2
-
-        # TODO raise exception if a fugacity is negative or zero.
-
-        return_dict = {'CO': fCO, 'CO2': fCO2, 'H2': fH2, 'H2O': fH2O, 'H2S': fH2S, 'O2': fO2,
-                       'S2': fS2, 'SO2': fSO2}
-
-        # perform checks/debugging
+        return XHtot, XStot, XCtot
+    
+    def _perform_calc_checks(self, K_vals, fugs, XStot, XHtot, XCtot, **kwargs):
         f_error = False
 
         # check fH2O/fH2 ratio
         if XHtot == 0:
             fH_ratio_constraint = np.nan 
         else:
-            fH_ratio_constraint = float(K_vals['H2O'] * math.sqrt(fO2))
-            fH_ratio_calculated = float(fH2O/fH2)
+            fH_ratio_constraint = float(K_vals['H2O'] * math.sqrt(fugs['O2']))
+            fH_ratio_calculated = float(fugs['H2O']/fugs['H2'])
         if XHtot != 0:
             if round(fH_ratio_constraint,5) != round(fH_ratio_calculated,5):
                 f_error = True
@@ -504,8 +353,8 @@ class calculate_fugacities(Calculate):
         if XCtot == 0:
             fC_ratio_constraint = np.nan 
         else:
-            fC_ratio_constraint = float(K_vals['CO2'] * math.sqrt(fO2))
-            fC_ratio_calculated = float(fCO2/fCO)
+            fC_ratio_constraint = float(K_vals['CO2'] * math.sqrt(fugs['O2']))
+            fC_ratio_calculated = float(fugs['CO2']/fugs['CO'])
         if XCtot != 0:
             if round(fC_ratio_constraint,5) != round(fC_ratio_calculated,5):
                 f_error = True
@@ -517,8 +366,8 @@ class calculate_fugacities(Calculate):
         if XStot == 0:
             fS_ratio_constraint = np.nan 
         else:
-            fS_ratio_constraint = float(K_vals['SO2'] * fO2)
-            fS_ratio_calculated = float(fSO2/math.sqrt(fS2))
+            fS_ratio_constraint = float(K_vals['SO2'] * fugs['O2'])
+            fS_ratio_calculated = float(fugs['SO2']/math.sqrt(fugs['S2']))
         if XStot != 0:
             if round(fS_ratio_constraint,5) != round(fS_ratio_calculated,5):
                 f_error = True
@@ -530,8 +379,8 @@ class calculate_fugacities(Calculate):
         if XStot == 0:
             fHS_ratio_constraint = np.nan 
         else:
-            fHS_ratio_constraint = float(K_vals['H2S'] * fH2)
-            fHS_ratio_calculated = float(fH2S/math.sqrt(fS2))
+            fHS_ratio_constraint = float(K_vals['H2S'] * fugs['H2'])
+            fHS_ratio_calculated = float(fugs['H2S']/math.sqrt(fugs['S2']))
         if XStot != 0:
             if round(fHS_ratio_constraint,5) != round(fHS_ratio_calculated,5):
                 f_error = True
@@ -543,6 +392,61 @@ class calculate_fugacities(Calculate):
             # print out all fugacities to check they are sensible
             for k, v in return_dict.items():
                 print("f" + str(k) + ": " + str(v))
+
+    def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta, gammas='calculate',
+                  K_vals='calculate', opt='gekko', **kwargs):
+        # cache user-passed argument values
+        self.sample = sample
+        self.pressure = pressure
+        self.temperature = temperature
+        self.fO2_buffer = fO2_buffer
+        self.fO2_delta = fO2_delta
+        self.gammas = gammas
+        self.K_vals = K_vals
+        self.opt = opt 
+
+        # convert input to XHtot, XStot, XCtot
+        XHtot, XStot, XCtot = self._calc_XHSCtot(sample=self.sample)      
+
+        # get thermodynamic parameters
+        fO2, gammas_calcd, K_vals_calcd = self._calc_thermo_params(pressure=self.pressure,
+                                                                   temperature=self.temperature,
+                                                                   gammas=self.gammas,
+                                                                   K_vals=self.K_vals,
+                                                                   fO2_buffer=self.fO2_buffer,
+                                                                   fO2_delta=self.fO2_delta)  
+
+        #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
+        # choose optimization routine based on user input
+        fH2, fS2 = fugacity_equations.fugs_H2_S2(opt=self.opt, gammas=gammas_calcd,
+                                                 K_vals=K_vals_calcd, pressure=self.pressure,
+                                                 XHtot=XHtot, XStot=XStot, fO2=fO2)
+
+        # SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
+        fCO = fugacity_equations.fugCO(KCO2=K_vals_calcd['CO2'], fO2=fO2, XCtot=XCtot,
+                                       pressure=self.pressure, gammaCO=gammas_calcd['CO'],
+                                       gammaCO2=gammas_calcd['CO2'])
+
+        # THIRD calculate fCO2 using calc'd fCO and known fO2 value
+        fCO2 = fugacity_equations.fugCO2(KCO2=K_vals_calcd['CO2'], fCO=fCO, fO2=fO2)
+
+        # FOURTH calcualte fSO2 using calc'd fS2 and known fO2 value
+        fSO2 = fugacity_equations.fugSO2(KSO2=K_vals_calcd['SO2'], fS2=fS2, fO2=fO2)
+
+        # FIFTH calculate fH2S using calc'd fH2 and fS2 values
+        fH2S = fugacity_equations.fugH2S(KH2S=K_vals_calcd['H2S'], fH2=fH2, fS2=fS2)
+
+        # SIXTH calculate fH2O using calc'd fH2 and knwn fO2 value
+        fH2O = fugacity_equations.fugH2O(KH2O=K_vals_calcd['H2O'], fO2=fO2, fH2=fH2)
+
+        # TODO raise exception if a fugacity is negative or zero.
+
+        return_dict = {'CO': fCO, 'CO2': fCO2, 'H2': fH2, 'H2O': fH2O, 'H2S': fH2S, 'O2': fO2,
+                       'S2': fS2, 'SO2': fSO2}
+
+        # perform checks/debugging
+        self._perform_calc_checks(K_vals=K_vals_calcd, fugs=return_dict, XStot=XStot, XHtot=XHtot,
+                                  XCtot=XCtot)
 
         return return_dict
 

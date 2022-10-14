@@ -142,29 +142,28 @@ class TestSpeciation(unittest.TestCase):
 
         # parameters for the calculation
         self.pressure = 1000.0
-        self.temperature = 1000.0
+        self.temperature = 926.0
         self.fO2_buffer = 'QFM'
         self.fO2_delta = 1
 
         # speciation calculated with TAVERN to 4 dp
-        self.speciation_known = {'CO':  0.0915,
-                                 'CO2': 28.2862,
-                                 'H2':  0.0121,
-                                 'H2O': 27.5583,
-                                 'H2S': 20.1962,
-                                 'S2':  8.2839,
-                                 'SO2': 15.5718,
-                                 'O2':  1.0886e-11}
+        self.speciation_known = {'CO':  0.096679984,
+                                 'CO2': 38.35293618,
+                                 'H2':  0.017629767,
+                                 'H2O': 42.42249584,
+                                 'H2S': 17.54972334,
+                                 'S2':  0.395331538,
+                                 'SO2': 1.165203359,
+                                 'O2':  7.975e-13}
 
     def test_calculate_speciation_wtpercent(self):
         calcd_result = tv.calculate_speciation(sample=self.sample, pressure=self.pressure,
                                                temperature=self.temperature,
                                                fO2_buffer=self.fO2_buffer,
                                                fO2_delta=self.fO2_delta).result
-        calcd_result_dict = calcd_result.get_composition()
         known_result = self.speciation_known
-        for k in calcd_result_dict.keys():
-            self.assertAlmostEqual(calcd_result_dict[k], known_result[k], places=4)
+        for k in calcd_result.keys():
+            self.assertAlmostEqual(calcd_result[k], known_result[k], places=3)
 
     def test_calculate_speciation_unitsMolPercent(self):
         calcd_result = tv.calculate_speciation(sample=self.sample_unitsMolPercent,
@@ -172,10 +171,9 @@ class TestSpeciation(unittest.TestCase):
                                                temperature=self.temperature,
                                                fO2_buffer=self.fO2_buffer,
                                                fO2_delta=self.fO2_delta).result
-        calcd_result_dict = calcd_result.get_composition()
         known_result = self.speciation_known
-        for k in calcd_result_dict.keys():
-            self.assertAlmostEqual(calcd_result_dict[k], known_result[k], places=4)
+        for k in calcd_result.keys():
+            self.assertAlmostEqual(calcd_result[k], known_result[k], places=3)
 
     def test_calculate_speciation_unitsMolFrac(self):
         calcd_result = tv.calculate_speciation(sample=self.sample_unitsMolFrac,
@@ -183,8 +181,7 @@ class TestSpeciation(unittest.TestCase):
                                                temperature=self.temperature,
                                                fO2_buffer=self.fO2_buffer,
                                                fO2_delta=self.fO2_delta).result
-        calcd_result_dict = calcd_result.get_composition()
         known_result = self.speciation_known
-        for k in calcd_result_dict.keys():
-            self.assertAlmostEqual(calcd_result_dict[k], known_result[k], places=3)
+        for k in calcd_result.keys():
+            self.assertAlmostEqual(calcd_result[k], known_result[k], places=3)
 
