@@ -392,6 +392,35 @@ class calculate_fugacities(Calculate):
             # print out all fugacities to check they are sensible
             for k, v in return_dict.items():
                 print("f" + str(k) + ": " + str(v))
+    
+    def _calculate_fugacities(self, XHtot, XStot, XCtot, fO2,gammas, K_vals, **kwargs):
+        #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
+        # choose optimization routine based on user input
+        fH2, fS2 = fugacity_equations.fugs_H2_S2(opt=self.opt, gammas=gammas,
+                                                 K_vals=K_vals, pressure=self.pressure,
+                                                 XHtot=XHtot, XStot=XStot, fO2=fO2)
+
+        # SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
+        fCO = fugacity_equations.fugCO(KCO2=K_vals['CO2'], fO2=fO2, XCtot=XCtot,
+                                       pressure=self.pressure, gammaCO=gammas['CO'],
+                                       gammaCO2=gammas['CO2'])
+
+        # THIRD calculate fCO2 using calc'd fCO and known fO2 value
+        fCO2 = fugacity_equations.fugCO2(KCO2=K_vals['CO2'], fCO=fCO, fO2=fO2)
+
+        # FOURTH calcualte fSO2 using calc'd fS2 and known fO2 value
+        fSO2 = fugacity_equations.fugSO2(KSO2=K_vals['SO2'], fS2=fS2, fO2=fO2)
+
+        # FIFTH calculate fH2S using calc'd fH2 and fS2 values
+        fH2S = fugacity_equations.fugH2S(KH2S=K_vals['H2S'], fH2=fH2, fS2=fS2)
+
+        # SIXTH calculate fH2O using calc'd fH2 and knwn fO2 value
+        fH2O = fugacity_equations.fugH2O(KH2O=K_vals['H2O'], fO2=fO2, fH2=fH2)
+
+        # TODO raise exception if a fugacity is negative or zero.
+
+        return {'CO': fCO, 'CO2': fCO2, 'H2': fH2, 'H2O': fH2O, 'H2S': fH2S, 'O2': fO2,
+                'S2': fS2, 'SO2': fSO2}
 
     def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta, gammas='calculate',
                   K_vals='calculate', opt='gekko', **kwargs):
@@ -416,38 +445,13 @@ class calculate_fugacities(Calculate):
                                                                    fO2_buffer=self.fO2_buffer,
                                                                    fO2_delta=self.fO2_delta)  
 
-        #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
-        # choose optimization routine based on user input
-        fH2, fS2 = fugacity_equations.fugs_H2_S2(opt=self.opt, gammas=gammas_calcd,
-                                                 K_vals=K_vals_calcd, pressure=self.pressure,
-                                                 XHtot=XHtot, XStot=XStot, fO2=fO2)
-
-        # SECOND calculate fCO (eqn 10 in Iacovino, 2015) using sympy
-        fCO = fugacity_equations.fugCO(KCO2=K_vals_calcd['CO2'], fO2=fO2, XCtot=XCtot,
-                                       pressure=self.pressure, gammaCO=gammas_calcd['CO'],
-                                       gammaCO2=gammas_calcd['CO2'])
-
-        # THIRD calculate fCO2 using calc'd fCO and known fO2 value
-        fCO2 = fugacity_equations.fugCO2(KCO2=K_vals_calcd['CO2'], fCO=fCO, fO2=fO2)
-
-        # FOURTH calcualte fSO2 using calc'd fS2 and known fO2 value
-        fSO2 = fugacity_equations.fugSO2(KSO2=K_vals_calcd['SO2'], fS2=fS2, fO2=fO2)
-
-        # FIFTH calculate fH2S using calc'd fH2 and fS2 values
-        fH2S = fugacity_equations.fugH2S(KH2S=K_vals_calcd['H2S'], fH2=fH2, fS2=fS2)
-
-        # SIXTH calculate fH2O using calc'd fH2 and knwn fO2 value
-        fH2O = fugacity_equations.fugH2O(KH2O=K_vals_calcd['H2O'], fO2=fO2, fH2=fH2)
-
-        # TODO raise exception if a fugacity is negative or zero.
-
-        return_dict = {'CO': fCO, 'CO2': fCO2, 'H2': fH2, 'H2O': fH2O, 'H2S': fH2S, 'O2': fO2,
-                       'S2': fS2, 'SO2': fSO2}
+        return_dict = self._calculate_fugacities(XHtot=XHtot, XStot=XStot, XCtot=XCtot, fO2=fO2,
+                                                 gammas=gammas_calcd, K_vals=K_vals_calcd)
 
         # perform checks/debugging
         self._perform_calc_checks(K_vals=K_vals_calcd, fugs=return_dict, XStot=XStot, XHtot=XHtot,
                                   XCtot=XCtot)
-
+        
         return return_dict
 
 
@@ -586,19 +590,21 @@ class respeciate_fluid(Calculate):
     ----------
     sample: MagmaticFluid class
         Composition of the magmatic fluid as MagmaticFluid object.
-
     pressure: float
         Pressure at which to respeciate the fluid, in bars.
-
     temperature: float
         Temperature at which to respeciate the fluid, in degrees C.
-
     fO2_buffer: str
         Name of new buffer for which to calculate fO2. Can be one of 'QFM' or 'NNO'.
-
     fO2_delta: float
         Deviation from named buffer in log units. For example, for QFM+2, enter 'QFM' as the
         fO2_buffer and 2 as the fO2_delta.
+    opt: str
+        Optional. Default value is 'gekko' in which case the GEKKO library will be used for
+        optimization of fS2 and fH2. Other options are 'leastsq' (scipy.optimize.leastsq) and
+        'least_squares' (scipy.optimize.least_squares). If the GEKKO method fails to converge on
+        a solution or hits the maximum iteration number of 250, an internal exception will be
+        thrown and the 'leastsq' method will be attempted instead.
 
     Returns
     -------
@@ -606,7 +612,7 @@ class respeciate_fluid(Calculate):
         Fluid composition after respeciation.
     """
 
-    def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta):
+    def calculate(self, sample, pressure, temperature, fO2_buffer, fO2_delta, opt='gekko'):
         # Calculate new fugacity coefficients and equilibrium constants at given conditions.
         gammas = calculate_fugacity_coefficients(pressure=pressure, temperature=temperature).result
         Ks = calculate_equilibrium_constants(temperature=temperature).result
@@ -660,32 +666,9 @@ class respeciate_fluid(Calculate):
         XOtot = O2 + (0.666666)*CO2 + (0.5)*CO + (0.333333)*H2O + (0.666666)*SO2
 
         #FIRST calculate fH2 and fS2 using fsolve, two eqns; two unknowns (eqn 9 in Iacovino, 2015)
-
-        #TODO - figure out how to do these two equations with two unknowns and set bounds that roots must be >0
-        #Used least_squares to do this in a similar implimentation in this very script, but I can't
-        #figureo out how to get it to work with two equations instead of just one.
-        #THIS IS IMPORTANT since right now it's a total non-mathematical flub.
-
-        def equations(p):
-            fH2, fS2 = p
-            return  (
-                     ((fH2/(gammas["H2"]*pressure))    +
-                        ((sympy.Rational(2.0) * Ks["H2O"] * fH2 * sympy.sqrt(fO2_res))/
-                            (sympy.Rational(3.0) * gammas["H2O"] * pressure)) +
-                        ((sympy.Rational(2.0) * Ks["H2S"] * fH2 * sympy.sqrt(abs(fS2)))/
-                            (sympy.Rational(3.0) * gammas["H2S"] * pressure)) -
-                        XHtot), 
-                     ((fS2/(gammas["S2"] * pressure))  +
-                        ((Ks["H2S"] * fH2 * sympy.sqrt(abs(fS2)))/
-                            (sympy.Rational(3.0) * gammas["H2S"] * pressure)) +
-                        ((Ks["SO2"] * fO2_res * sympy.sqrt(abs(fS2)))/
-                            (sympy.Rational(3.0) * gammas["SO2"] * pressure)) -
-                        XStot)
-                    )
-
-        fH2_a, fS2_a = fsolve(equations, (1, 1))
-        fH2 = abs(fH2_a)
-        fS2 = abs(fS2_a)
+        fH2, fS2 = fugacity_equations.fugs_H2_S2(opt=opt, gammas=gammas, K_vals=Ks,
+                                                 pressure=pressure, XHtot=XHtot, XStot=XStot,
+                                                 fO2=fO2_res)
 
         #SECOND calculate fCO (eqn 10 in Iacovino, 2015)
         fCO = sympy.symbols('fCO') #for sympy
